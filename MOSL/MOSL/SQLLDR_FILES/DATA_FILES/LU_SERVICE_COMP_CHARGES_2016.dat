@@ -1,0 +1,92 @@
+MPW|Metered Potable Water|D7101|Metered Potable Water Meter Fixed Charges|range|Meter Size range|mm|£/a
+MPW|Metered Potable Water|D7102|Metered Potable Water Supply Point Fixed Charges|decimal|||£/a
+MPW|Metered Potable Water|D7103|Metered Potable Water Block Tariff|range|block tariff table|m3/a|£/m3
+MPW|Metered Potable Water|D7104|Metered Potable Water Capacity Charge|range|standby capacity table|m3/day|£/a per m3/day
+MPW|Metered Potable Water|D7105|Metered Potable Water Premium Tolerance Factor|decimal||percentage|
+MPW|Metered Potable Water|D7106|Metered Potable Water Daily Standby Usage Volume Charge|decimal|||£/m3
+MPW|Metered Potable Water|D7107|Metered Potable Water Daily Premium Usage Volume Charge|decimal|||£/m3
+MPW|Metered Potable Water|D7108|Metered Potable Water Maximum Demand Tariff|decimal|||£/a per m3/day
+AW|Assessed Water|D7201| Assessed Water Fixed Charge|decimal|||£/a
+AW|Assessed Water|D7202 |Assessed Water Meter Fixed Charges|range|Meter Size range||£/a
+AW|Assessed Water|D7203 |Assessed Water Volumetric Charge|decimal|||£/m3
+AW|Assessed Water|D7204 |Assessed Water Band Charge|bandCharge|tariff band table||£/a
+UW|Unmeasured Water|D7251|Unmeasured Water Fixed Charge|decimal|||£/a
+UW|Unmeasured Water|D7252|Unmeasured Water RV Poundage|Zone|||£/a per £RV
+UW|Unmeasured Water|D7253|Unmeasured Water RV Threshold|decimal|||£RV
+UW|Unmeasured Water|D7254|Unmeasured Water RV Maximum Charge|decimal|||£/a
+UW|Unmeasured Water|D7255|Unmeasured Water RV Minimum Charge|decimal|||£/a
+UW|Unmeasured Water|D7256|Unmeasured Water Miscellaneous Type A Charge|decimal|||£/a
+UW|Unmeasured Water|D7257|Unmeasured Water Miscellaneous Type B Charge|decimal|||£/a
+UW|Unmeasured Water|D7258|Unmeasured Water Miscellaneous Type C Charge|decimal|||£/a
+UW|Unmeasured Water|D7259|Unmeasured Water Miscellaneous Type D Charge|decimal|||£/a
+UW|Unmeasured Water|D7260|Unmeasured Water Miscellaneous Type E Charge|decimal|||£/a
+UW|Unmeasured Water|D7261|Unmeasured Water Miscellaneous Type F Charge|decimal|||£/a
+UW|Unmeasured Water|D7262|Unmeasured Water Miscellaneous Type G Charge|decimal|||£/a
+UW|Unmeasured Water|D7263|Unmeasured Water Miscellaneous Type H Charge|decimal|||£/a
+UW|Unmeasured Water|D7264|Unmeasured Water Pipe Fixed Charge|range|tariff lookup table||£/a
+MS|Metered Sewerage|D7301 |Metered Sewerage Meter Fixed Charges|range|Meter Size range||£/a
+MS|Metered Sewerage|D7302 |Metered Sewerage Supply Point Fixed Charges|decimal|||£/a
+MS|Metered Sewerage|D7303 |Metered Sewerage Block  Tariff|range|block tariff table||(m3/a)-> £/m3
+AS|Assessed Sewerage|D7351| Assessed Sewerage Fixed Charge|decimal|||£/a
+AS|Assessed Sewerage|D7352|Assessed Sewerage Meter Fixed Charges|range|Meter Size range||£/a
+AS|Assessed Sewerage|D7353| Assessed Sewerage Volumetric Charge|decimal|||£/m3
+AS|Assessed Sewerage|D7354| Assessed Sewerage Band Charge|bandcharge|tariff band table||£/a
+US|Unmeasured Sewerage|D7401|Unmeasured Sewerage Fixed Charge|decimal|||£/a
+US|Unmeasured Sewerage|D7402|Unmeasured Sewerage RV Poundage|zone|||£/a per £RV
+US|Unmeasured Sewerage|D7403|Unmeasured Sewerage RV Threshold|decimal|||£RV
+US|Unmeasured Sewerage|D7404|Unmeasured Sewerage RV Maximum Charge|decimal|||£/a
+US|Unmeasured Sewerage|D7405|Unmeasured Sewerage RV Minimum Charge|decimal|||£/a
+US|Unmeasured Sewerage|D7406|Unmeasured Sewerage Miscellaneous Type A Charge|decimal|||£/a
+US|Unmeasured Sewerage|D7407|Unmeasured Sewerage Miscellaneous Type B Charge|decimal|||£/a
+US|Unmeasured Sewerage|D7408|Unmeasured Sewerage Miscellaneous Type C Charge|decimal|||£/a
+US|Unmeasured Sewerage|D7409|Unmeasured Sewerage Miscellaneous Type D Charge|decimal|||£/a
+US|Unmeasured Sewerage|D7410|Unmeasured Sewerage Miscellaneous Type E Charge|decimal|||£/a
+US|Unmeasured Sewerage|D7411|Unmeasured Sewerage Miscellaneous Type F Charge|decimal|||£/a
+US|Unmeasured Sewerage|D7412|Unmeasured Sewerage Miscellaneous Type G Charge|decimal|||£/a
+US|Unmeasured Sewerage|D7413|Unmeasured Sewerage Miscellaneous Type H Charge|decimal|||£/a
+US|Unmeasured Sewerage|D7414|Unmeasured Sewerage Pipe Fixed Charge|range|Meter Size range||£/a
+SWD|Surface water drainage|D7451|Surface Water Area  Band|BandRange|tariff lookup table|area -> bands|
+SWD|Surface water drainage|D7452|Surface Water Band Charge|bandcharge|tariff band table||£/a
+SWD|Surface water drainage|D7453|Surface Water Community Band|decimal||band|
+SWD|Surface water drainage|D7454|Surface Water Fixed Charge|decimal|||£/a
+SWD|Surface water drainage|D7455|Surface Water RV Poundage|zone|property zone||£/a per £RV
+SWD|Surface water drainage|D7456|Surface Water RV Threshold|decimal|||£RV
+SWD|Surface water drainage|D7457|Surface Water RV Maximum Charge|decimal|||£/a
+SWD|Surface water drainage|D7458|Surface Water RV Minimum Charge|decimal|||£/a
+SWD|Surface water drainage|D7459|Surface Water  Meter Fixed Charges|range|Meter Size range||(mm)-> £/a
+SWD|Surface water drainage|D7460|Surface Water  Block Tariff|range|block tariff table||(m3/a)-> £/m3
+TE|Trade Effluent|D7551|Trade Effluent Band Charge|bandcharge|tariff band table|£/a|
+TE|Trade Effluent|D7552|Reception Capacity Charging Component|decimal|||£/m3 per day
+TE|Trade Effluent|D7553|Volumetric Capacity Charging Component|decimal|||£/m3 per day
+TE|Trade Effluent|D7554|Additional Volumetric Capacity Charging Component|decimal|||£/m3 per day
+TE|Trade Effluent|D7555|Marine Capacity Charging Component|decimal|||£/m3 per day
+TE|Trade Effluent|D7556|Biological Capacity Charging Component|decimal|||£/kg per day
+TE|Trade Effluent|D7557|Sludge Capacity Charging Component|decimal|||£/kg per day
+TE|Trade Effluent|D7558|Ammonia Capacity Charging Component|decimal|||£/kg per day
+TE|Trade Effluent|D7559|Reception Block  Tariff|range|block tariff table||(m3/a) -> £/m3
+TE|Trade Effluent|D7560|Volumetric Charging Component|decimal|||£/m3
+TE|Trade Effluent|D7561|Additional Volumetric Charging Component|decimal|||£/m3
+TE|Trade Effluent|D7562|Marine Treatment Charging Component|decimal|||£/m3
+TE|Trade Effluent|D7563|Secondary Treatment Block Tariff|range|block tariff table||£/m3
+TE|Trade Effluent|D7564|Sludge Treatment Charging Component|decimal|||£/m3
+TE|Trade Effluent|D7565|Ammoniacal Nitrogen Charging Component|decimal|||£/m3
+TE|Trade Effluent|D7566|Chemical Oxygen Demand Base Value|decimal|||mg/l
+TE|Trade Effluent|D7567|Suspended Solids Base Value|decimal|||mg/l
+TE|Trade Effluent|D7568|Ammoniacal Nitrogen Base Value|decimal|||mg/l
+TE|Trade Effluent|D7569|Minimum valu of Ammoniacal Nitrogen content which is charged|decimal|||mg/l
+TE|Trade Effluent|D7570|Trade Effluent Minimum Operational Charge|decimal|||£/a
+TE|Trade Effluent|D7571|Trade Effluent Fixed Charge|decimal|||£/a
+TE|Trade Effluent|D7572|Trade Effluent Component X Capacity Charging Component|decimal|||£/kg per day
+TE|Trade Effluent|D7573|Trade Effluent Component Y Capacity Charging Component|decimal|||£/kg per day
+TE|Trade Effluent|D7574|Trade Effluent Component Z Capacity Charging Component|decimal|||£/kg per day
+TE|Trade Effluent|D7575|Trade Effluent Component X Charging Component|decimal|||£/m3
+TE|Trade Effluent|D7576|Trade Effluent Component Y Charging Component|decimal|||£/m3
+TE|Trade Effluent|D7577|Trade Effluent Component Z Charging Component|decimal|||£/m3
+TE|Trade Effluent|D7578|Trade Effluent Component X Base Value|decimal|||mg/l
+TE|Trade Effluent|D7579|Trade Effluent Component Y Base Value|decimal|||mg/l
+TE|Trade Effluent|D7580|Trade Effluent Component Z Base Value|decimal|||mg/l
+TE|Trade Effluent|D7581|Minimum value of Trade Effluent Component X which is charged|decimal|||mg/l
+TE|Trade Effluent|D7582|Minimum value of Trade Effluent Component Y which is charged|decimal|||mg/l
+TE|Trade Effluent|D7583|Minimum value of Trade Effluent Component Z which is charged|decimal|||mg/l
+WCA|Water Charge Adjustments|D7601|Section 154A Payment Value|decimal|||£/a
+SCA|Sewerage Charge Adjustments|D7601|Section 154A Payment Value|decimal|||£/a

@@ -1,0 +1,40 @@
+W|Water Service|Metered Potable Water|W|MPW
+W|Water Service|Metered Non-Potable Water|null|MNPW
+W|Water Service|Assessed Water|UW|AW
+W|Water Service|Unmeasured Water|UW|UW
+W|Water Service|Water Charge Adjustment|null|WCA
+S|Sewerage Service|Metered Sewerage|S|MS
+S|Sewerage Service|Assessed Sewerage|SU|AS
+S|Sewerage Service|Unmeasured Sewerage|SU|US
+S|Sewerage Service|Surface Water Drainage Services|MSWD|SW
+S|Sewerage Service|Highway Drainage Services|null|HD
+S|Sewerage Service|Trade Effluent Services|TW|TE
+S|Sewerage Service|Sewerage Charge Adjustment|null|SCA
+S|Sewerage Service|Metered Sewerage|XSYOR|MS
+S|Sewerage Service|Unmeasured Sewerage|XNTHA|US
+S|Sewerage Service|Unmeasured Sewerage|UNSS |US
+S|Sewerage Service|Surface Water Drainage Services|XDNW |SW
+S|Sewerage Service|Surface Water Drainage Services|XZNWE|SW
+S|Sewerage Service|Surface Water Drainage Services|XZWEL|SW
+S|Sewerage Service|Surface Water Drainage Services|XDYOR|SW
+S|Sewerage Service|Metered Sewerage|XSANG|MS
+S|Sewerage Service|Unmeasured Sewerage|XUYOR|US
+S|Sewerage Service|Metered Sewerage|SW   |MS
+S|Sewerage Service|Unmeasured Sewerage|XFYOR|US
+S|Sewerage Service|Unmeasured Sewerage|XNYOR|US
+S|Sewerage Service|Unmeasured Sewerage|XNNWE|US
+S|Sewerage Service|Surface Water Drainage Services|UD   |SW
+S|Sewerage Service|Metered Sewerage|XSNW |MS
+S|Sewerage Service|Unmeasured Sewerage|XUANG|US
+S|Sewerage Service|Unmeasured Sewerage|XFWEL|US
+S|Sewerage Service|Unmeasured Sewerage|XFNWE|US
+S|Sewerage Service|Unmeasured Sewerage|XNWEL|US
+S|Sewerage Service|Unmeasured Sewerage|XUTHA|US
+S|Sewerage Service|Surface Water Drainage Services|XZYOR|SW
+S|Sewerage Service|Unmeasured Sewerage|XUWEL|US
+S|Sewerage Service|Metered Sewerage|XSNW |MS
+S|Sewerage Service|Unmeasured Sewerage|US   |US
+S|Sewerage Service|Unmeasured Sewerage|XFTHA|US
+S|Sewerage Service|Metered Sewerage|XSTHA|MS
+
+

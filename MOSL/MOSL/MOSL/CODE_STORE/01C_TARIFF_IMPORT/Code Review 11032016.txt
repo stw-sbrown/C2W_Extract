@@ -1,0 +1,9 @@
+Hi Sree,
+
+As discussed please look into the following review comments:
+
+For TARIFF (P_MIG_TARIFF include. Package & body)
+Tariff:
+1 so automate batch number generation by calling FN_STARTBATCH so that the tariff loading can be automated.
+1a - job numbers need to be set automatically set using routine in P_MIG_Batch, again so the loading can be automated
+2 - Upper case all reference data as per CSD 301 data valid set <- defect raise on issue log

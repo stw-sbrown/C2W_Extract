@@ -1,0 +1,13 @@
+Code review 18/03/2016
+
+I’ve been through the updates you’ve made to the Address procedure following the review. 
+Please ensure that you apply the following CHANGES as stated below:
+
+1 ) The audit code for counting the number of inserts you’ve include is not acceptable or valid. EG you cannot assume that the number of rows inserted is = to the number read – number dropped which is what your code is doing ‘l_no_row_insert_prop     :=l_no_row_read_prop - l_no_row_dropped_prop;’ <= you must change this to PHYSICALLY COUNT each row written / dropped and read INDEPENANTLY.
+
+The audit calculation at the end of the job will then need to ensure that the rows inserted is = to the number read – number dropped. Please check the Property procedure for examples.
+
+2) You need to include BT_TVP054 in the selection of customer for CURSOR cur_prop_cust  as it  has all the Primary customers/LE we are looking for. Insure that you still check for ‘P’ customers
+3 ) also include BT_TVP054 in the selection of customer for CURSOR cur_prop_meter as it has all the meters we are interested in. no_combine_163
+
+Please update the procedure and then re-test

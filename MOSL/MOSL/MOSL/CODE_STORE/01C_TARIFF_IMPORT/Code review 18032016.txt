@@ -1,0 +1,15 @@
+Sree,
+
+I’ve been through the updates you’ve made to the Tariff procedures following the review.
+
+Please ensure that you apply the following CHANGES as stated below:
+
+1.	The new procedure you created ‘P_TARIFF_RUN’ MUST BE DELETED. The code review comment ask you to automate the batch status call not create a new procedure.
+2.	INSERT  a call to the common function   P_STARTBATCH at the beginning on the P_MIG_TARIFF package (keeping all procedures within the PACKAGE, see P_MIG_BATCH for an example!).
+3.	Pass the BATCH number and job to each of the procedures you subsequently call for the tariffs.
+4.	When you have loaded the tariffs then call the common function FN_UPDATEBATCH to close the Batch run from within the P_MIG_TARIFF.
+5.	Provide Nigel with a .sql file to populate the MIG_JOBREF table with the Job details for each procedure you call. This file needs to be included in the build scripts so that the table is always prepopulated.
+
+Please re-test and update the unit test plan to show you have tested the changes above.
+
+Note: you cannot create a procedure/package THAT IS NOT LISTED in the Control Document.

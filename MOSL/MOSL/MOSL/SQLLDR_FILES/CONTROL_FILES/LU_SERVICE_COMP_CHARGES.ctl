@@ -1,0 +1,16 @@
+--
+-- Subversion $Revision: 4023 $	
+--
+load data
+infile '/recload/DOWD/MOSL/SQLLDR_FILES/DATA_FILES/LU_SERVICE_COMP_CHARGES.dat'
+into table LU_SERVICE_COMP_CHARGES
+fields terminated by "|" 
+(SERVICE_COMP_CD,
+SERVICE_COMP_DESC,
+CHARGE_TYPE,
+CHARGE_DESC,
+STEP_TYPE,
+STEP_DESC,
+USAGE_UNITS,
+CHARGE_UNITS
+)

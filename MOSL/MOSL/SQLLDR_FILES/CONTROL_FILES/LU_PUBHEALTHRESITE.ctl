@@ -1,0 +1,13 @@
+--
+-- Subversion $Revision: 4023 $	
+--
+load data
+into table LU_PUBHEALTHRESITE
+fields terminated by "|"
+(
+STWPROPERTYNUMBER_PK,
+NONPUBHEALTHRELSITE,
+NONPUBHEALTHRELSITEDSC,
+PUBHEALTHRELSITEARR,
+SENSITIVE
+)

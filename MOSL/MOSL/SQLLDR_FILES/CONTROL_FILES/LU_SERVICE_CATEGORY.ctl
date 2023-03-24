@@ -1,0 +1,13 @@
+--
+-- Subversion $Revision: 4023 $	
+--
+load data
+into table LU_SERVICE_CATEGORY
+fields terminated by "|"
+(
+SUPPLY_POINT_CODE,
+SUPPLY_POINT_DESC,
+SERVICECOMPONENTDESC,
+TARGET_SERV_PROV_CODE,
+SERVICECOMPONENTTYPE
+)

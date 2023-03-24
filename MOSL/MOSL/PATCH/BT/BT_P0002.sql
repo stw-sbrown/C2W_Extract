@@ -1,0 +1,208 @@
+------------------------------------------------------------------------------
+-- TASK				: 	Transform Trade Effluent 
+--
+-- AUTHOR         		: 	L.Smith
+--
+-- FILENAME       		: 	BT_P00002.sql
+--
+--
+-- Subversion $Revision: 4023 $	
+--
+-- CREATED        		: 	13/05/2016
+--	
+-- DESCRIPTION 		   	: 	This file contains added TE functionality
+--
+-- ASSOCIATED FILES		:	
+-- ASSOCIATED SCRIPTS  		:	
+--
+--
+---------------------------- Modification History ----------------------------------------------------------
+--
+-- Version     		Date            Author         	Description
+-- ---------      ----------      -------         ------------------------------------------------
+-- V0.01	  13/05/2016	  L.Smith         New processes to incorporate TE functionality.
+--                                                1. DDL to create a lookup table LU_TE_REFDESC and indexes
+--                                                2. DDL to create table BT_TE_WORKING and indexes
+--                                                3. DDL to create table BT_TE_SUMMARY and indexes
+--
+-- V0.02          16/05/2016      L.Smith         Append columns to tables BT_TE_WORKING and BT_TE_SUMMARY
+--                                                Remove references to moutran
+-- 
+------------------------------------------------------------------------------------------------------------
+--CHANGES
+------------------------------------------------------
+--1 
+PROMPT 'Create table LU_TE_REFDESC';
+CREATE TABLE "LU_TE_REFDESC"
+  (
+    "TE_REFDESC"      VARCHAR2(1000 BYTE) NOT NULL ENABLE,
+    "TE_REVISED_NAME" VARCHAR2(200 BYTE) NOT NULL ENABLE,
+    "TE_CATEGORY"     VARCHAR2(100 BYTE) NOT NULL ENABLE
+  )
+  SEGMENT CREATION IMMEDIATE PCTFREE 10 PCTUSED 40 INITRANS 1 MAXTRANS 255 NOCOMPRESS LOGGING STORAGE
+  (
+    INITIAL 26214400 NEXT 26214400 MINEXTENTS 1 MAXEXTENTS 2147483645 PCTINCREASE 0 FREELISTS 1 FREELIST GROUPS 1 BUFFER_POOL DEFAULT FLASH_CACHE DEFAULT CELL_FLASH_CACHE DEFAULT
+  )
+  TABLESPACE "SOWMTRAN" ;
+
+PROMPT 'Create index LU_TE_REFDESC_IDX1';
+CREATE UNIQUE INDEX "LU_TE_REFDESC_IDX1" ON "LU_TE_REFDESC"
+  (
+    "TE_REFDESC"
+  )
+  PCTFREE 10 INITRANS 2 MAXTRANS 255 COMPUTE STATISTICS STORAGE
+  (
+    INITIAL 26214400 NEXT 26214400 MINEXTENTS 1 MAXEXTENTS 2147483645 PCTINCREASE 0 FREELISTS 1 FREELIST GROUPS 1 BUFFER_POOL DEFAULT FLASH_CACHE DEFAULT CELL_FLASH_CACHE DEFAULT
+  )
+  TABLESPACE "SOWMTRAN" ;
+
+--PROMPT 'Create index LU_TE_REFDESC_IDX2 *** TEST FOR DUPlicates AS THEY MUST BE REMOVED ***';
+--CREATE UNIQUE INDEX "LU_TE_REFDESC_IDX2" ON "LU_TE_REFDESC"
+--  (
+--    "TE_REFDESC", "TE_REVISED_NAME", "TE_CATEGORY"
+--  )
+--  PCTFREE 10 INITRANS 2 MAXTRANS 255 COMPUTE STATISTICS STORAGE
+--  (
+--    INITIAL 26214400 NEXT 26214400 MINEXTENTS 1 MAXEXTENTS 2147483645 PCTINCREASE 0 FREELISTS 1 FREELIST GROUPS 1 BUFFER_POOL DEFAULT FLASH_CACHE DEFAULT CELL_FLASH_CACHE DEFAULT
+--  )
+--  TABLESPACE "SOWMTRAN" ;
+
+
+--
+--2
+--
+PROMPT 'Create table BT_TE_WORKING'
+CREATE TABLE "BT_TE_WORKING"
+  (
+    "NO_ACCOUNT"               NUMBER(9,0)         NOT NULL ENABLE,
+    "ACCOUNT_REF"              VARCHAR2(150 BYTE)  NOT NULL ENABLE,
+    "TE_REVISED_NAME"          VARCHAR2(200 BYTE)  NOT NULL ENABLE,
+    "TE_CATEGORY"              VARCHAR2(100 BYTE)  NOT NULL ENABLE,
+    "PERIOD"                   NUMBER              NOT NULL ENABLE,
+    "MET_REF"                  NUMBER              NOT NULL ENABLE,
+    "SERIAL_NO"                VARCHAR2(150 BYTE),
+    "REFDESC"                  VARCHAR2(250 BYTE),
+    "TARGET_REF"               VARCHAR2(150 BYTE),
+    "UNIT"                     VARCHAR2(150 BYTE),
+    "UNITS"                    NUMBER,
+    "START_DATE"               DATE,
+    "START_READ"               VARCHAR2(150 BYTE),
+    "CODE"                     VARCHAR2(150 BYTE),
+    "END_DATE"                 DATE,
+    "END_READ"                 VARCHAR2(150 BYTE),
+    "CODEA"                    VARCHAR2(150 BYTE),
+    "TE"                       NUMBER,
+    "TE_VOL"                   NUMBER,
+    "MS"                       NUMBER,
+    "MS_VOL"                   NUMBER,
+    "NO_IWCS"                  NUMBER             NOT NULL ENABLE,
+    "STAGE"                    NUMBER,
+    "REASON"                   VARCHAR2(150 BYTE),
+    "OUW_YEAR"                 NUMBER,
+    "TE_YEAR"                  NUMBER,
+    "FA_YN"                    VARCHAR2(1 BYTE),
+    "FA_VOL"                   NUMBER,
+    "DA_YN"                    VARCHAR2(1 BYTE),
+    "DA_VOL"                   NUMBER,
+    "PA_YN"                    VARCHAR2(1 BYTE),
+    "PA_PERC"                  NUMBER,
+    "MDVOL_FOR_WS_METER_YN"    VARCHAR2(1 BYTE),
+    "MDVOL_FOR_WS_METER_PERC"  NUMBER,
+    "MDVOL_FOR_TE_METER_YN"    VARCHAR2(1 BYTE),
+    "MDVOL_FOR_TE_METER_PERC"  NUMBER,
+    "CALC_DISCHARGE_YN"        VARCHAR2(1 BYTE),
+    "CALC_DISCHARGE_VOL"       NUMBER
+  )
+  SEGMENT CREATION IMMEDIATE PCTFREE 10 PCTUSED 40 INITRANS 1 MAXTRANS 255 NOCOMPRESS LOGGING STORAGE
+  (
+    INITIAL 26214400 NEXT 26214400 MINEXTENTS 1 MAXEXTENTS 2147483645 PCTINCREASE 0 FREELISTS 1 FREELIST GROUPS 1 BUFFER_POOL DEFAULT FLASH_CACHE DEFAULT CELL_FLASH_CACHE DEFAULT
+  )
+  TABLESPACE "SOWMTRAN" ;
+
+PROMPT 'Create index BT_TE_WORKING_idx1'
+CREATE UNIQUE INDEX "BT_TE_WORKING_IDX1" ON "BT_TE_WORKING"
+  (
+    "NO_IWCS", "MET_REF"
+  )
+  PCTFREE 10 INITRANS 2 MAXTRANS 255 COMPUTE STATISTICS STORAGE
+  (
+    INITIAL 26214400 NEXT 26214400 MINEXTENTS 1 MAXEXTENTS 2147483645 PCTINCREASE 0 FREELISTS 1 FREELIST GROUPS 1 BUFFER_POOL DEFAULT FLASH_CACHE DEFAULT CELL_FLASH_CACHE DEFAULT
+  )
+  TABLESPACE "SOWMTRAN" ;
+
+
+--
+--3
+--
+PROMPT 'Create table BT_TE_SUMMARY'
+CREATE TABLE "BT_TE_SUMMARY"
+  (
+    "NO_ACCOUNT"          NUMBER(9,0)         NOT NULL ENABLE,
+    "NO_IWCS"             NUMBER              NOT NULL ENABLE,
+    "NO_PROPERTY"         NUMBER(9,0)         NOT NULL ENABLE,
+    "SUPPLY_POINT_CODE"   CHAR(2)             NOT NULL ENABLE,
+    "NO_LEGAL_ENTITY"     NUMBER(9,0)         NOT NULL ENABLE,
+    "NO_WORKING_ROWS"     NUMBER(9,0)         NOT NULL ENABLE, 
+    "DISTRICT"            NUMBER,
+    "SEWAGE"              NUMBER,
+    "SITECODE"            NUMBER,
+    "DISNO"               NUMBER,
+    "SITE_NAME"           VARCHAR2(150 BYTE),
+    "SITE_ADD_1"          VARCHAR2(150 BYTE),
+    "SITE_ADD_2"          VARCHAR2(150 BYTE),
+    "SITE_ADD_3"          VARCHAR2(150 BYTE),
+    "SITE_ADD_4"          VARCHAR2(150 BYTE),
+    "SITE_PC"             VARCHAR2(150 BYTE),
+    "BILL_NAME"           VARCHAR2(150 BYTE),
+    "BILL_ADD_1"          VARCHAR2(150 BYTE),
+    "BILL_ADD_2"          VARCHAR2(150 BYTE),
+    "BILL_ADD_3"          VARCHAR2(150 BYTE),
+    "BILL_ADD_4"          VARCHAR2(150 BYTE),
+    "BILL_PC"             VARCHAR2(150 BYTE),
+    "XREF"                NUMBER,
+    "SP_CODE"             VARCHAR2(150 BYTE),
+    "NO_ACCOUNT_REF"      VARCHAR2(150 BYTE)   NOT NULL ENABLE,
+    "CHARGE_CODE"         VARCHAR2(150 BYTE),
+    "CW_ADV"              VARCHAR2(150 BYTE),
+    "OTHER_USED_WATER"    VARCHAR2(150 BYTE),
+    "DIS_DESC"            VARCHAR2(150 BYTE),
+    "AMMONIA"             VARCHAR2(150 BYTE),
+    "COD"                 NUMBER,
+    "SS"                  NUMBER,
+    "STATUS"              VARCHAR2(150 BYTE),
+    "CEASED_DATE" DATE,
+    "BILL_CYCLE" NUMBER,
+    "START_CYPHER" DATE,
+    "DATA_PROVIDE_METHOD" VARCHAR2(150 BYTE),
+    "DIS_START_DATE"      DATE,
+    "TAME_AREA"           VARCHAR2(1 BYTE),
+    "COL_CALC"            VARCHAR2(250 BYTE)  NOT NULL ENABLE,
+    "TE_VOLUME"           NUMBER,
+    "OUW_VOLUME"          NUMBER,
+    "TE_DAYS"             NUMBER,
+    "OUW_DAYS"            NUMBER,
+    CONSTRAINT "CH01_WORKING_ROWS" CHECK (NO_WORKING_ROWS > 0) ENABLE
+  )
+  SEGMENT CREATION IMMEDIATE PCTFREE 10 PCTUSED 40 INITRANS 1 MAXTRANS 255 NOCOMPRESS LOGGING STORAGE
+  (
+    INITIAL 26214400 NEXT 26214400 MINEXTENTS 1 MAXEXTENTS 2147483645 PCTINCREASE 0 FREELISTS 1 FREELIST GROUPS 1 BUFFER_POOL DEFAULT FLASH_CACHE DEFAULT CELL_FLASH_CACHE DEFAULT
+  )
+  TABLESPACE "SOWMTRAN" ;
+
+PROMPT 'Create index BT_TE_SUMMARY_IDX1';
+CREATE UNIQUE INDEX "BT_TE_SUMMARY_IDX1" ON "BT_TE_SUMMARY"
+  (
+    "NO_IWCS"
+  )
+  PCTFREE 10 INITRANS 2 MAXTRANS 255 COMPUTE STATISTICS STORAGE
+  (
+    INITIAL 26214400 NEXT 26214400 MINEXTENTS 1 MAXEXTENTS 2147483645 PCTINCREASE 0 FREELISTS 1 FREELIST GROUPS 1 BUFFER_POOL DEFAULT FLASH_CACHE DEFAULT CELL_FLASH_CACHE DEFAULT
+  )
+  TABLESPACE "SOWMTRAN";
+
+
+exit;
+
+
+
+

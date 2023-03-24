@@ -1,0 +1,12 @@
+Customer Review
+
+1- Code contains comments to  highlight that  any more than 3 Distinc LE per prorperty are filtered out. ISSUE on central log.
+
+-- OB Actions
+2 - add issue numbers to code to track resolution in code comments section. -sorted
+3 - update date sharepoint with latest stored procedure code version. Ping me  -- sorted
+4 - re-test proof for resolved issues -sorted
+
+---MM Actions
+5 - update F&V mapping to resolved inconsistencies
+6 - tacke issue I-003 forward

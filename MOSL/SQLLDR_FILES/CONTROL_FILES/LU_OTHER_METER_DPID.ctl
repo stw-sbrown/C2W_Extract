@@ -1,0 +1,16 @@
+--
+-- Subversion $Revision: 6127 $	
+--
+OPTIONS (SKIP=1)
+load data
+into table LU_OTHER_METER_DPID
+fields terminated by "|" TRAILING NULLCOLS
+(
+    DPID_PK,
+    NM_PREFERRED,
+    STWACCOUNTNUMBER,
+    STWPROPERTYNUMBER_PK,
+    METERREF,
+    MANUFACTURER_PK,
+    MANUFACTURERSERIALNUM_PK
+)

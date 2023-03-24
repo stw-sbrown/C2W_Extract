@@ -1,8 +1,15 @@
 --Create table BT_SC_UW 
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 4454 $
 --N.Henderson - 12/04/2016
 --Attempt to drop the table first. Will generate warnign if does not
 --exist but can be ignored.
+
+--------------------------- Modification History ---------------------------------------   
+--
+-- Version     Date        Author     Description
+-- ---------   ----------  -------    ---------------------------------------------------
+-- V 0.01      15/06/2016  S.Badhan   removed schema name from comment.
+-----------------------------------------------------------------------------------------
 
 --DROP TABLE BT_SC_UW;
 
@@ -33,7 +40,7 @@
 	CONSTRAINT BT_SC_UW_PK PRIMARY KEY (NO_COMBINE_054, NO_TARIFF_GROUP, NO_TARIFF_SET)
  );
 
-   COMMENT ON TABLE MOUTRAN.BT_SC_UW  IS 'BT_SC_UW';
+   COMMENT ON TABLE BT_SC_UW  IS 'BT_SC_UW';
 
    commit;
    exit;

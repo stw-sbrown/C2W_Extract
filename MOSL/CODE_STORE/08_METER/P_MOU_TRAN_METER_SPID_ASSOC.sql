@@ -1,5 +1,5 @@
-
-  CREATE OR REPLACE PROCEDURE P_MOU_TRAN_METER_SPID_ASSOC (no_batch          IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
+create or replace
+PROCEDURE           P_MOU_TRAN_METER_SPID_ASSOC (no_batch          IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
                                                 no_job            IN MIG_JOBREF.NO_JOB%TYPE,
                                                 return_code       IN OUT NUMBER )
 IS
@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_METER_SPID_ASSOC.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 6088 $
 --
 -- CREATED        : 21/04/2016
 --
@@ -23,7 +23,17 @@ IS
 --
 -- Version     Date        Author     CR/DEF    Description
 -- ---------   ----------  -------    ------    ---------------------------------------------
---
+-- v 3.09      01/11/2016  D.Cheung             I-352 - For Aggregates - set property as master
+-- v 3.08      19/08/2016  D.Cheung             I-346 - Getting 2 SPIDs for 18 meters - MOSL Test 3 rejections
+-- v 3.07      16/08/2016  D.Cheung             I-341 - Duplicate constraint error in DEL_METER_SUPPLY_POINT - Meter associated to multiple SPIDs
+-- v 3.06      15/08/2016  D.Cheung             I-333 - Remove spid join to MO_METER
+-- v 3.05      11/08/2016  S.Badhan             I-333 - Join meter spid to sub meter spid to get sub meters
+-- v 3.04      05/08/2016  D.Cheung             I-299 - change logic to get correct corespids for network subs-meters
+-- V 3.03      19/07/2016  D.Cheung             I-302 - Add TE Meter Associations
+-- V 3.02      12/07/2016  D.Cheung   CR_021    Change to muse MASTER property SPID for Aggregate properties
+-- V 3.01      26/05/2016  D.Cheung   D_51      MOSL TEST1 Defect m1 - Remove spaces from ManufacturerSerialNum
+-- V 2.02      25/05/2016  D.Cheung             Change for TE - only get POTABLE meters
+-- V 2.01      23/05/2016  D.Cheung   CR_014    Add MANUFCODE field
 -- V 1.01      10/05/2016  D.Cheung             Link back to MO_METER (on meterref)
 -- V 0.02      05/05/2016  K.Burton             REOPENED Issue I-118 - removed link to BT_METER_SPID table from main cursor
 --                                              SPIDs now retrieved from LU_SPID_RANGE directly for W service category
@@ -35,7 +45,7 @@ IS
   l_error_number                VARCHAR2(255);
   l_error_message               VARCHAR2(512);
   l_progress                    VARCHAR2(100);
-  l_prev_met                    BT_TVP163.NO_EQUIPMENT%TYPE;
+  l_prev_met                    MO_METER.METERREF%TYPE;
   l_job                         MIG_JOBSTATUS%ROWTYPE;
   l_err                         MIG_ERRORLOG%ROWTYPE;
   l_mo                          MO_METER_SPID_ASSOC%ROWTYPE;          --****TODO - ADD OUTPUT TABLE TYPE
@@ -52,39 +62,54 @@ CURSOR cur_met (p_no_equipment_start   BT_TVP163.NO_EQUIPMENT%TYPE,
                  p_no_equipment_end     BT_TVP163.NO_EQUIPMENT%TYPE)
     IS
 --****TODO - ADD MAIN CURSOR QUERY
---      SELECT * FROM
---      (
-        SELECT /*+ PARALLEL(TV163,12) PARALLEL(T036,12) PARALLEL(T063,12) PARALLEL(MM,12) */
-        DISTINCT
+    SELECT DISTINCT  
+      NO_EQUIPMENT
+      ,NO_PROPERTY
+      ,NM_PREFERRED
+      ,NO_UTL_EQUIP
+      ,SPID_PK
+      ,MANUFCODE
+FROM (
+        SELECT /*+ FULL(TV163) FULL(TV054_N) FULL(TV054) PARALLEL(TV163,12) PARALLEL(TV054_N,12)  PARALLEL(LSR,12) PARALLEL(MM,12) */
+--        DISTINCT
               TV163.NO_EQUIPMENT
-              ,TV163.NO_PROPERTY
-              ,TRIM(T036.NM_PREFERRED) NM_PREFERRED
-              ,TRIM(T063.NO_UTL_EQUIP) NO_UTL_EQUIP
-        --      ,TRIM(BT1.SPID_PK) SPID_PK -- V0.02
-              ,LSR.SPID_PK -- V0.02
-        --      ,BT1.SUPPLY_POINT_CODE -- V0.02
---              ,LSR.SERVICECATEGORY -- V0.02
+              ,CASE WHEN TRIM(TV163.AGG_NET) IN ('N','M') THEN TV163.NO_PROPERTY ELSE NVL(TV163.NO_PROPERTY_MASTER,TV163.NO_PROPERTY) END NO_PROPERTY
+              ,MM.MANUFACTURER_PK   NM_PREFERRED     --V3.01
+              ,MM.MANUFACTURERSERIALNUM_PK  NO_UTL_EQUIP     --V3.01
+--              ,LSR.SPID_PK -- V0.02
+              ,CASE WHEN TRIM(TV163.AGG_NET) IN ('N','M') THEN LSR_N.SPID_PK ELSE LSR.SPID_PK END SPID_PK -- V 3.04
+              ,MM.MANUFCODE --v2.01
         FROM   BT_TVP163 TV163
-        JOIN CIS.TVP063EQUIPMENT T063 ON (T063.NO_EQUIPMENT = TV163.NO_EQUIPMENT
-            AND T063.CD_COMPANY_SYSTEM = 'STW1')
-        JOIN CIS.TVP036LEGALENTITY T036 ON T036.NO_LEGAL_ENTITY = T063.NO_BUSINESS
--- ****** V 0.02 - REOPENED Issue I-118 removed link to BT_METER_SPID and replaced with LU_SPID_RANGE for water meters only        
-        --JOIN BT_METER_SPID BT1 ON (BT1.CORESPID = TV163.CORESPID
-        --    AND BT1.NO_PROPERTY = TV163.NO_PROPERTY)
---        JOIN BT_TVP054 TV054 ON (TV054.NO_PROPERTY = TV163.NO_PROPERTY)
-        JOIN LU_SPID_RANGE LSR ON (LSR.CORESPID_PK = TV163.CORESPID  
+-- GET METER DETAILS IF IT IS A NETWORK OR MIXED SUB METER      
+        LEFT JOIN BT_TVP054 TV054_N ON (TV163.NO_PROPERTY = TV054_N.NO_PROPERTY) --CR_021
+        LEFT JOIN BT_TVP054 TV054 ON (NVL(TV163.NO_PROPERTY_MASTER,TV163.NO_PROPERTY) = TV054.NO_PROPERTY) --CR_021
+        LEFT JOIN LU_SPID_RANGE LSR ON (LSR.CORESPID_PK = TV054.CORESPID
           AND LSR.SERVICECATEGORY = 'W')
--- ***** V 1.01 - linked back to MO_METER - to prevent FK failures - we don't need to kill the same records twice!
-        JOIN MO_METER MM ON (MM.METERREF = TV163.NO_EQUIPMENT AND MM.NONMARKETMETERFLAG = 0
-          AND MM.SPID_PK = LSR.SPID_PK)
+        LEFT JOIN LU_SPID_RANGE LSR_N ON (LSR_N.CORESPID_PK = TV054_N.CORESPID
+          AND LSR_N.SERVICECATEGORY = 'W')
+        JOIN MO_METER MM ON (MM.METERREF = TV163.NO_EQUIPMENT 
+          AND MM.NONMARKETMETERFLAG = 0
+          AND ((TRIM(TV163.AGG_NET) IN ('N','M') AND MM.SPID_PK = LSR_N.SPID_PK) OR (TRIM(TV163.AGG_NET) NOT IN ('N','M') AND MM.SPID_PK = LSR.SPID_PK))  --v3.06 - v3.08
+          AND MM.METERTREATMENT = 'POTABLE')  --v2.02
       WHERE  TV163.NO_EQUIPMENT BETWEEN p_no_equipment_start AND p_no_equipment_end
---      )
---      PIVOT (
---          MAX(SPID_PK)
---          FOR SUPPLY_POINT_CODE
---          IN ('W' WATERSPID, 'S' SEWAGESPID)
---      )
-      ORDER BY NO_EQUIPMENT ASC;
+--      WHERE  TV163.NO_EQUIPMENT BETWEEN 1 AND 999999999
+          AND TV163.FG_ADD_SUBTRACT = '+'     --v3.07
+          AND TV163.CD_SERVICE_PROV = 'W'     --v3.07
+          AND TV163.DT_END_054 IS NULL        --v3.07
+      UNION
+      SELECT /*+ FULL(MM) */
+          MM_TE.METERREF NO_EQUIPMENT
+          ,MM_TE.INSTALLEDPROPERTYNUMBER NO_PROPERTY
+          ,TRIM(MM_TE.MANUFACTURER_PK)   NM_PREFERRED     
+          ,TRIM(MM_TE.MANUFACTURERSERIALNUM_PK)  NO_UTL_EQUIP    
+          ,TRIM(MM_TE.SPID_PK) SPID_PK
+          ,TRIM(MM_TE.MANUFCODE) MANUFCODE
+      FROM MO_METER MM_TE
+      WHERE MM_TE.NONMARKETMETERFLAG = 0
+          AND MM_TE.METERTREATMENT IN ('PRIVATETE','PRIVATEWATER')
+    )
+    WHERE SPID_PK IS NOT NULL
+    ORDER BY NO_EQUIPMENT;
 
 TYPE tab_meter IS TABLE OF cur_met%ROWTYPE INDEX BY PLS_INTEGER;
 t_met  tab_meter;
@@ -189,9 +214,11 @@ BEGIN
               -- IF ALL CONDITIONS MET - WRITE ROLL-OVER RECORD TO MO_METER_SPID_ASSOC TABLE
 --****TODO - ADD INSERT
               INSERT INTO MO_METER_SPID_ASSOC
-                (METERREF, STWPROPERTYNUMBER_PK, MANUFACTURER_PK, MANUFACTURERSERIALNUM_PK, SPID)
+                (METERREF, STWPROPERTYNUMBER_PK, MANUFACTURER_PK, MANUFACTURERSERIALNUM_PK, SPID
+                , MANUFCODE)  --v2.01
               VALUES
-                (TRIM(t_met(i).NO_EQUIPMENT), TRIM(t_met(i).NO_PROPERTY), TRIM(t_met(i).NM_PREFERRED), TRIM(t_met(i).NO_UTL_EQUIP), TRIM(t_met(i).SPID_PK));
+                (TRIM(t_met(i).NO_EQUIPMENT), TRIM(t_met(i).NO_PROPERTY), TRIM(t_met(i).NM_PREFERRED), TRIM(t_met(i).NO_UTL_EQUIP), TRIM(t_met(i).SPID_PK)
+                , TRIM(t_met(i).MANUFCODE));  --v2.01
           EXCEPTION
           WHEN OTHERS THEN
               l_rec_written := FALSE;

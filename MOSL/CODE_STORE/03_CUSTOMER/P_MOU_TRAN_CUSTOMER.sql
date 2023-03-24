@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_CUSTOMER.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 6016 $
 --
 -- CREATED        : 01/03/2016
 --
@@ -32,6 +32,15 @@ IS
 --                                                 Temp_TVP054 to BT_TVP054 as defined in the Updated Control document
 --v 1.01       25/04/2016          O.Badmus        Issue no I-114 SIC CODE classfication code type CHECK and when Invalid change to Null and write out a warning
 --v 1.02       27/04/2016          O.Badmus        Issue no I-196 linking cursor to MO_SUPPLY_POINT to ensure only 1 customer per suppy point
+--V 1.03       16/06/2016          L.Smith         I238 - Count of distinct legal entities written to MO_CUSTOMER.
+--                                                        Set boolean l_rec_written to false when an exception occurs
+--v 1.04       22/06/2016          O.Badmus        Issue no I-250 or CR_023. Set CUSTOMERNAME and CUSTOMERBANNERNAME to 'THE OCCUPIER' if property is marked as vacant 
+--v 1.05       24/06/2016          O.Badmus        BT_SENSI_SITE_SPECIFIC (customer or LE with Site specific needs) added to proc
+--v 1.06       27/06/2016          S.Badhan        Remove ampersand in previous comment.
+--v 1.07       29/09/2016          S.Badhan        Enable parallel processing.
+--v 1.08       03/10/2016          S.Badhan        Add Commit before 'Enable parallel processing'.
+--v 1.09       04/10/2016          S.Badhan        Disable parallel processing after processing complete.
+--v 1.10       27/10/2016          K.Burton        Removed BT_SENSI_SITE_SPECIFIC from sensitive customer determination
 -----------------------------------------------------------------------------------------
 --prerequsite
   c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_CUSTOMER';  -- modify
@@ -49,6 +58,8 @@ IS
   l_no_row_read                 MIG_CPLOG.RECON_MEASURE_TOTAL%TYPE;
   L_NO_ROW_INSERT               MIG_CPLOG.RECON_MEASURE_TOTAL%TYPE;
   l_no_row_dropped              MIG_CPLOG.RECON_MEASURE_TOTAL%TYPE;
+  l_le_row_insert               MIG_CPLOG.RECON_MEASURE_TOTAL%TYPE;
+  l_legals_filtered             MIG_CPLOG.RECON_MEASURE_TOTAL%TYPE;
   l_no_row_war                  MIG_JOBSTATUS.WAR_TOLERANCE%TYPE;
   l_no_row_err                  MIG_JOBSTATUS.ERR_TOLERANCE%TYPE;
   l_no_row_exp                  MIG_JOBSTATUS.EXP_TOLERANCE%TYPE;
@@ -66,17 +77,20 @@ cursor CUR_CUST (P_NO_LEGAL_ENTITY_START   BT_TVP054.NO_LEGAL_ENTITY%type,
                   THEN T3.NM_LEGAL_ENTITY
                   ELSE ''
             END NM_LEGAL_ENTITY,
-            T2.CD_SIC
+            T2.CD_SIC,
+            T5.OCCUPENCYSTATUS
      FROM   BT_TVP054 T054,
             CIS.TVP036LEGALENTITY T2,
             CIS.TVP064LENAME T3,
-            MO_SUPPLY_POINT T4
+            MO_SUPPLY_POINT T4,
+            MO_ELIGIBLE_PREMISES T5
     WHERE   T054.NO_LEGAL_ENTITY BETWEEN p_no_legal_entity_start AND  p_no_legal_entity_end
       AND    T054.CD_COMPANY_SYSTEM = T2.CD_COMPANY_SYSTEM
-      AND    T4.CUSTOMERNUMBER_PK = T054.NO_LEGAL_ENTITY(+)
-      AND    T4.STWPROPERTYNUMBER_PK = T054.NO_PROPERTY (+)
+      AND    T4.CUSTOMERNUMBER_PK = T054.NO_LEGAL_ENTITY
+      AND    T4.STWPROPERTYNUMBER_PK = T054.NO_PROPERTY
       AND    T054.NO_LEGAL_ENTITY = T2.NO_LEGAL_ENTITY
       AND    T3.NO_LEGAL_ENTITY(+) = T2.NO_LEGAL_ENTITY
+      AND    T5.STWPROPERTYNUMBER_PK = T4.STWPROPERTYNUMBER_PK
 --    AND    T2.IND_LEGAL_ENTITY ='B'
       AND    T3.NO_SEQ(+)  = 2
       AND    T054.TP_CUST_ACCT_ROLE = 'P'
@@ -93,6 +107,8 @@ BEGIN
    l_job.NO_INSTANCE := 0;
    l_no_row_read := 0;
    L_NO_ROW_INSERT := 0;
+   l_le_row_insert := 0;
+   l_legals_filtered := 0;
    l_no_row_dropped := 0;
    l_no_row_war := 0;
    l_no_row_err := 0;
@@ -120,6 +136,41 @@ BEGIN
       return_code := -1;
       RETURN;
    END IF;
+
+   COMMIT;
+   
+   EXECUTE IMMEDIATE 'ALTER SESSION ENABLE PARALLEL DML';
+   
+--     --v 1.05                    
+--     BEGIN
+--        l_progress := 'Rebuilding BT_SENSI_SITE_SPECIFIC lookup';
+        EXECUTE IMMEDIATE 'TRUNCATE TABLE BT_SENSI_SITE_SPECIFIC';  --v 1.10 - leave this in to ensure this table has no data in  it
+--        INSERT INTO BT_SENSI_SITE_SPECIFIC
+--        SELECT /*+ PARALLEL(t1,12) PARALLEL(t2,12) */
+--        DISTINCT no_legal_entity
+--        , to_char(DIA) DIALYSIS, to_char(HAE) HAEMO, to_char(HOU)  "HOUSE, OLD", to_char(LEA) LEARNING, to_char(HEA) HEARING, to_char(SIG) SIGHT, to_char(VOC) VOCAL
+--        ,'Y' sensitive 
+--        FROM (
+--        SELECT DISTINCT t1.cd_spec_cond_tp,t1.no_legal_entity,t2.no_property
+--        FROM CIS.tvp091lespccndalrt t1
+--        JOIN bt_tvp054 t2
+--        ON t1.no_legal_entity = t2.no_legal_entity
+--        WHERE t1.cd_spec_cond_tp IN ('DIALYSIS','HAEMO','HOUSE, OLD','LEARNING','HEARING','SIGHT','VOCAL')
+--        AND (t1.dt_end IS NULL OR t1.dt_end > SYSDATE)
+--        UNION
+--        SELECT DISTINCT t1.cd_spec_cond_tp,t2.no_legal_entity,t1.no_property
+--        FROM cis.TVP097PROPSCALERT t1
+--        JOIN bt_tvp054 t2
+--        ON t1.no_property = t2.no_property
+--        WHERE t1.cd_spec_cond_tp IN ('DIALYSIS','HAEMO','HOUSE, OLD','LEARNING','HEARING','SIGHT','VOCAL')
+--        AND (t1.dt_end IS NULL OR t1.dt_end > SYSDATE)
+--        )
+--        PIVOT (
+--               MAX(NVL(cd_spec_cond_tp,0)) FOR cd_spec_cond_tp IN ('DIALYSIS' DIA, 'HAEMO' HAE,'HOUSE, OLD' HOU,'LEARNING' LEA,'HEARING' HEA,'SIGHT' SIG,'VOCAL' VOC)
+--            );
+--        COMMIT;
+--    END;
+
 
   -- process all records for range supplied
   OPEN cur_cust (l_job.NO_RANGE_MIN, l_job.NO_RANGE_MAX); -- modify
@@ -150,9 +201,37 @@ BEGIN
          ELSE L_MO.STDINDUSTRYCLASSCODE := t_cust(I).CD_SIC;
          END IF;
         -- dbms_output.put_line('test1');
-l_progress := 'loop processing SELECTING FROM SENSITIVE';
 
-         BEGIN
+    l_progress := 'loop processing SELECTING FROM SENSITIVE';
+
+--v 1.10
+    BEGIN
+      SELECT DECODE(SENSITIVE,'Y','SEMDV','NA') 
+      INTO l_hlt.SENSITIVE
+      FROM LU_PUBHEALTHRESITE
+      WHERE STWPROPERTYNUMBER_PK = t_cust(i).no_property;
+    EXCEPTION
+      WHEN NO_DATA_FOUND THEN
+        l_hlt.SENSITIVE := 'NA';
+    END;
+----v 1.05
+--         BEGIN
+--         SELECT SENSITIVE
+--         INTO   l_hlt.SENSITIVE
+--         FROM(
+--         SELECT t2.no_property, t1.SENSITIVE
+--         FROM BT_SENSI_SITE_SPECIFIC t1
+--         JOIN bt_tvp054 t2 ON  t1.no_legal_entity = t2.no_legal_entity
+--         UNION
+--         SELECT t1.STWPROPERTYNUMBER_PK no_property, t1.SENSITIVE
+--         FROM LU_PUBHEALTHRESITE T1
+--         ORDER BY SENSITIVE)
+--         WHERE  no_property = t_cust(i).no_property;
+--         EXCEPTION
+--         WHEN NO_DATA_FOUND THEN
+--              l_hlt.SENSITIVE := NULL;
+--         end;
+        /* BEGIN
             SELECT SENSITIVE
             INTO   l_hlt.SENSITIVE
             FROM   LU_PUBHEALTHRESITE
@@ -160,14 +239,13 @@ l_progress := 'loop processing SELECTING FROM SENSITIVE';
          EXCEPTION
          WHEN NO_DATA_FOUND THEN
               l_hlt.SENSITIVE := NULL;
-         END;
+         END; */
 
-         IF
-         L_HLT.SENSITIVE IS NOT NULL
-           THEN L_HLT.SENSITIVE := 'SEMDV';
-         ELSE
-             L_HLT.SENSITIVE := 'NA';
-         END IF;
+--         IF L_HLT.SENSITIVE IS NOT NULL
+--           THEN L_HLT.SENSITIVE := 'SEMDV';
+--         ELSE
+--             L_HLT.SENSITIVE := 'NA';
+--         END IF;
          --SIC CODE classfication code type CHECK
          --and when it is Invalid change to Null and write out a warning
          IF 
@@ -179,7 +257,15 @@ l_progress := 'loop processing SELECTING FROM SENSITIVE';
              P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'W', SUBSTR('Invalid  Sic Code',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
           else L_CTY.STDINDUSTRYCLASSCODETYPE := 1980;
           END IF;
-
+          
+          --v 1.04 
+          IF t_cust(I).OCCUPENCYSTATUS = 'VACANT' 
+          THEN T_CUST(I).NM_PREFERRED := 'THE OCCUPIER';
+             IF t_cust(i).NM_LEGAL_ENTITY IS NOT NULL
+             THEN t_cust(i).NM_LEGAL_ENTITY := 'THE OCCUPIER';
+              END IF;
+           END IF;    
+              
         L_REC_WRITTEN := true;
         l_progress := 'loop processing ABOUT TO INSERT INTO TABLE';
         begin
@@ -192,7 +278,7 @@ l_progress := 'loop processing SELECTING FROM SENSITIVE';
         EXCEPTION
         WHEN OTHERS THEN
              L_NO_ROW_DROPPED := L_NO_ROW_DROPPED + 1;
-             l_rec_written := TRUE;
+             l_rec_written := FALSE;
              l_error_number := SQLCODE;
              l_error_message := SQLERRM;
 
@@ -216,6 +302,9 @@ l_progress := 'loop processing SELECTING FROM SENSITIVE';
 
         IF l_rec_written THEN
            l_no_row_insert := l_no_row_insert + 1;
+              IF t_cust(i).NO_LEGAL_ENTITY != l_prev_prp THEN
+                 l_le_row_insert := l_le_row_insert + 1;
+              END IF;
         END IF;
 
         l_prev_prp := t_cust(i).NO_LEGAL_ENTITY;
@@ -233,6 +322,10 @@ l_progress := 'loop processing SELECTING FROM SENSITIVE';
   END LOOP;
 
   CLOSE cur_cust;
+  
+  COMMIT; 
+  EXECUTE IMMEDIATE 'ALTER SESSION DISABLE PARALLEL DML';
+  
     -- write counts
   l_progress := 'Writing Counts';
 
@@ -241,7 +334,18 @@ l_progress := 'loop processing SELECTING FROM SENSITIVE';
   P_MIG_BATCH.FN_RECONLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'CP27', 940, L_NO_ROW_READ,    'Distinct Eligible Customers read during Transform');
   P_MIG_BATCH.FN_RECONLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'CP27', 950, L_NO_ROW_DROPPED, 'Eligible Customers  dropped during Transform');
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP27', 960, l_no_row_insert,  'Eligible Customers written to MO_CUSTOMER during Transform');
-
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP27', 961, l_le_row_insert,  'Legal Entities written to MO_CUSTOMER during Transform');
+  
+  SELECT COUNT(DISTINCT NO_LEGAL_ENTITY) legals_filtered
+    INTO l_legals_filtered
+  FROM (SELECT t054.NO_LEGAL_ENTITY
+          FROM BT_TVP054 T054
+         WHERE T054.NO_LEGAL_ENTITY BETWEEN l_job.NO_RANGE_MIN AND l_job.NO_RANGE_MAX
+           AND T054.TP_CUST_ACCT_ROLE = 'P'
+           AND T054.NO_LEGAL_ENTITY NOT IN (SELECT customernumber_pk FROM MO_SUPPLY_POINT)
+       );
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP27', 962, l_legals_filtered,  'Legal Entities filtered from MO_CUSTOMER during Transform');
+  
   --  check counts match
 
   IF l_no_row_read <> l_no_row_insert THEN

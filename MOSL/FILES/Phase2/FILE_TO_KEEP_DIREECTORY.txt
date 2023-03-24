@@ -1,0 +1,1 @@
+keep files as it allows the log directory to be included in the deplyoment .zip

@@ -1,0 +1,13 @@
+--
+-- Subversion $Revision: 5600 $	
+--
+LOAD data append into table OWC_METER_DISCHARGE_POINT
+fields terminated by "|" TRAILING NULLCOLS
+(
+MANUFACTURERSERIALNUM_PK,
+MANUFACTURER_PK,
+DPID_PK,
+PERCENTAGEDISCHARGE,
+SAPEQUIPMENT,
+OWC                  CONSTANT 'THAMES-W'
+)

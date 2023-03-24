@@ -1,0 +1,60 @@
+SET PAGESIZE NONE 
+SET NEWPAGE NONE
+SET LINESIZE 70
+SET ECHO OFF
+SET FEEDBACK OFF
+SET VERIFY OFF
+SET HEADING ON
+SET TERMOUT OFF
+SET TRIM ON
+SET UNDERLINE =
+
+DEFINE LINE1 = 'SAPDEL Reconciliation Summary'
+DEFINE LINE3 = 'End of Report'
+
+COLUMN report_date_col NEW_VALUE report_date
+col report_date_col noprint
+
+SELECT TO_CHAR ( SYSDATE ,'DD-Mon-YYYY:HH:MI') AS report_date_col FROM dual;
+
+DEFINE FILENAME = 'End of Report'
+
+col filename new_value filename  
+SELECT 'SAP_RECONCILIATION_SUMMARY' || '_' || TO_CHAR (SYSDATE,'YYYYMMDDHH24MI') || '.txt' AS filename FROM dual;
+
+SPOOL /recload/EXPORT/&1/&filename
+
+TTITLE CENTER LINE1 SKIP 1 CENTER LINE2 CENTER Date: &report_date SKIP 2
+BTITLE CENTER LINE3
+BTITLE OFF
+
+COLUMN col1 HEADING 'Supply Points' FORMAT 9,999,999,999
+select count(*) col1 FROM sap_del_pod;
+
+TTITLE '' SKIP 2
+
+COLUMN col1 HEADING 'Meters' FORMAT 9,999,999,999
+select count(*) col1 FROM SAP_DEL_DEV;
+
+COLUMN col1 HEADING 'Meter Reads' FORMAT 9,999,999,999
+select count(*) col1 FROM SAP_DEL_METER_READ;
+
+COLUMN col1 HEADING 'Property|Addresses' FORMAT 9,999,999,999
+select count(*) col1 FROM SAP_DEL_COB;
+
+BTITLE ON
+COLUMN col1 HEADING 'Customers' FORMAT 9,999,999,999
+select COUNT(DISTINCT customernumber_pk) col1  from SAP_DEL_BP;
+
+
+SPOOL OFF;
+SET PAGESIZE 14
+SET NEWPAGE 1
+SET LINESIZE 80
+SET HEADING OFF
+SET FEEDBACK ON
+CLEAR COLUMNS
+CLEAR COMPUTES
+
+exit
+

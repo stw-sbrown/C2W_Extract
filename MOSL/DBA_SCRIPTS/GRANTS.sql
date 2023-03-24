@@ -1,4 +1,13 @@
---  Subversion $Revision: 4023 $
+--  Subversion $Revision: 5870 $
+
+--------------------------- Modification History ---------------------------------------   
+--
+-- Version     Date        Author     Description
+-- ---------   ----------  -------    ---------------------------------------------------
+-- V 0.01      16/06/2016  S.Badhan   Change directory name for export for DOWS
+-- V 0.02      19/07/2016  M.Marron   Added permissions to FINTRAN and FINDEL
+-----------------------------------------------------------------------------------------
+
 grant create sequence to MOUTRAN;
 grant create synonym to MOUTRAN;
 grant create trigger to MOUTRAN;
@@ -6,6 +15,7 @@ grant create procedure to MOUTRAN;
 grant create view to MOUTRAN;
 grant debug connect session to MOUTRAN;
 grant drop public synonym to MOUTRAN;
+grant create materialized view to MOUTRAN;
 alter user MOUTRAN DEFAULT TABLESPACE SOWMTRAN quota unlimited on SOWMTRAN;
 
 grant create sequence to MOUDEL;
@@ -43,10 +53,28 @@ grant create procedure to SAPTRAN;
 grant create view to SAPTRAN;
 grant debug connect session to SAPTRAN;
 grant drop public synonym to SAPTRAN;
+grant create materialized view to SAPTRAN;
 alter user SAPTRAN DEFAULT TABLESPACE SOWSTRAN quota unlimited on SOWSTRAN;
 
+GRANT CREATE SEQUENCE TO FINTRAN;
+GRANT CREATE SYNONYM TO FINTRAN;
+GRANT CREATE TRIGGER TO FINTRAN;
+GRANT CREATE PROCEDURE TO FINTRAN;
+GRANT CREATE VIEW TO FINTRAN;
+GRANT DEBUG CONNECT SESSION TO FINTRAN;
+GRANT DROP PUBLIC SYNONYM TO FINTRAN;
+grant create materialized view to FINTRAN;
+alter user SAPTRAN DEFAULT TABLESPACE SOWFTRAN quota unlimited on SOWFTRAN;
+
+GRANT CREATE SEQUENCE TO FINDEL;
+GRANT CREATE SYNONYM TO FINDEL;
+GRANT CREATE TRIGGER TO FINDEL;
+GRANT CREATE PROCEDURE TO FINDEL;
+GRANT CREATE VIEW TO FINDEL;
+GRANT DEBUG CONNECT SESSION TO FINDEL;
+GRANT DROP PUBLIC SYNONYM TO FINDEL;
+alter user SAPTRAN DEFAULT TABLESPACE SOWFDEL quota unlimited on SOWFDEL;
 
 
--- Give access to a folder to a user account
-grant read,write on directory DELEXPORT to MOUTRAN;
+
 

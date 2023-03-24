@@ -7,7 +7,7 @@ PACKAGE P_MOU_DEL_TARIFF_EXPORT AS
 --
 -- FILENAME       : P_DEL_TARIFF_EXPORT.pks
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 6464 $
 --
 -- CREATED        : 31/03/2016
 --
@@ -24,6 +24,8 @@ PACKAGE P_MOU_DEL_TARIFF_EXPORT AS
 -- V 0.03      29/04/2016  K.Burton   Added NIL attribute code
 -- V 0.04      10/05/2016  K.Burton   Added new proc P_DEL_VALIDATION_CHECKS
 -- V 0.05      12/05/2016  K.Burton   Fixed " rendering in tarifflist tag
+-- V 0.06      05/12/2016  K.Burton   Changes to SingleChargeElement and MultiChargeElementHeader procs
+--                                    to accomodate changes to MOSL XML structure validation rules
 -----------------------------------------------------------------------------------------
 
   -- static variables for XML element tags
@@ -107,9 +109,9 @@ PACKAGE P_MOU_DEL_TARIFF_EXPORT AS
                                      no_job IN MIG_JOBREF.NO_JOB%TYPE,
                                      return_code IN OUT NUMBER);
 
-  PROCEDURE SingleChargeElement(v_element_name VARCHAR2, v_field_name VARCHAR2, v_field_value VARCHAR2);  -- Changed for V 0.02
+  PROCEDURE SingleChargeElement(v_element_name VARCHAR2, v_field_name VARCHAR2, v_field_value VARCHAR2, v_new_element BOOLEAN DEFAULT TRUE);  -- Changed for V 0.02
 
-  PROCEDURE MultiChargeElementHeader(v_element_name VARCHAR2, v_applicable VARCHAR2, v_field_name VARCHAR2);
+  PROCEDURE MultiChargeElementHeader(v_element_name VARCHAR2, v_applicable VARCHAR2, v_field_name VARCHAR2, v_new_element BOOLEAN DEFAULT TRUE);
 
   PROCEDURE MultiChargeElementColVals(v_col_val_node VARCHAR2, v_col_val_node_text VARCHAR2);
   

@@ -9,7 +9,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_SC_UW.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 4673 $
 --
 -- CREATED        : 15/03/2016
 --
@@ -19,10 +19,14 @@ IS
 -- This package must be run each time the transform batch is run. 
 ---------------------------- Modification History --------------------------------------   
 --
--- Version     Date                Author         Description
--- ---------   ---------------     -------             ----------------------------------
--- V 0.01      24/03/2016          S.Badhan        Initial Draft
------------------------------------------------------------------------------------------
+-- Version     Date           Author     Description
+-- ---------   ------------   -------    -----------------------------------------------
+-- V 0.05      01/07/2016     S.Badhan   I-265. Prevent duplicates in main cursor.
+-- V 0.04      30/06/2016     S.Badhan   I-264. Correct setting of VOLUMETRICRATE.
+-- V 0.03      29/06/2016     S.Badhan   I-260. Setup value for assessed water and sewage
+-- V 0.02      22/06/2016     L.Smith    Remove CP25
+-- V 0.01      24/03/2016     S.Badhan   Initial Draft
+----------------------------------------------------------------------------------------
 
   c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_SC_UW';
   c_company_cd                  CONSTANT VARCHAR2(4) := 'STW1';
@@ -45,14 +49,13 @@ CURSOR cur_prop (p_no_property_start   BT_TVP054.NO_PROPERTY%TYPE,
                  p_no_property_end     BT_TVP054.NO_PROPERTY%TYPE)                 
     IS 
 
-      SELECT spr.NO_PROPERTY, spr.NO_SERV_PROV, spr.NO_COMBINE_054, spr.CD_SERV_PROV, spr.NO_TARIFF_GROUP, spr.NO_TARIFF_SET,
+      SELECT DISTINCT spr.NO_PROPERTY, spr.NO_SERV_PROV, spr.NO_COMBINE_054, spr.CD_SERV_PROV, spr.NO_TARIFF_GROUP, spr.NO_TARIFF_SET,
              spr.CD_TARIFF, spr.NO_VALUE
       FROM   BT_SPR_TARIFF_ALGITEM  spr,
              LU_SERVICE_CATEGORY    cat   
       WHERE  spr.NO_PROPERTY BETWEEN p_no_property_start AND p_no_property_end   
       AND    spr.CD_BILL_ALG_ITEM      = 'WSFC'
       AND    cat.TARGET_SERV_PROV_CODE = trim(spr.CD_SERV_PROV)
-      AND    cat.SERVICECOMPONENTTYPE  = 'UW'  
       ORDER BY 1, 2;
 
 TYPE tab_property IS TABLE OF cur_prop%ROWTYPE INDEX BY PLS_INTEGER;
@@ -127,14 +130,16 @@ BEGIN
             D2018_TYPEACOUNT, D2019_TYPEBCOUNT, D2020_TYPECCOUNT, D2021_TYPEDCOUNT, D2022_TYPEECOUNT,
             D2024_TYPEFCOUNT, D2046_TYPEGCOUNT, D2048_TYPEHCOUNT, D2058_TYPEADESCRIPTION, D2059_TYPEBDESCRIPTION,
             D2060_TYPECDESCRIPTION, D2061_TYPEDDESCRIPTION, D2062_TYPEEDESCRIPTION, D2064_TYPEFDESCRIPTION,
-            D2065_TYPEGDESCRIPTION, D2069_TYPEHDESCRIPTION, D2067_TARIFFCODE, NO_TARIFF_GROUP, NO_TARIFF_SET)
+            D2065_TYPEGDESCRIPTION, D2069_TYPEHDESCRIPTION, D2067_TARIFFCODE, NO_TARIFF_GROUP, NO_TARIFF_SET,
+            VOLUMETRICRATE)
             VALUES
             (t_prop(i).NO_PROPERTY, t_prop(i).NO_SERV_PROV, t_prop(i).NO_COMBINE_054, t_prop(i).CD_SERV_PROV, 
             --NULL, t_prop(i).NO_VALUE, NULL, NULL, NULL,
             null, 1, null, null, null,
             null, null, null, null, 'Water Supply Fixed Charge',
             NULL, NULL, NULL, NULL,
-            null, null, t_prop(i).CD_TARIFF, t_prop(i).NO_TARIFF_GROUP, t_prop(i).NO_TARIFF_SET );
+            NULL, NULL, t_prop(i).CD_TARIFF, t_prop(i).NO_TARIFF_GROUP, t_prop(i).NO_TARIFF_SET,
+            t_prop(i).NO_VALUE);
            EXCEPTION  
           WHEN OTHERS THEN 
                l_no_row_dropped := l_no_row_dropped + 1;
@@ -179,7 +184,7 @@ BEGIN
   -- write counts 
   l_progress := 'Writing Counts';  
   
-  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP25', 730, l_no_row_insert, 'Distinct Service Component Type during KEY_GEN stage 2');
+--  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP25', 730, l_no_row_insert, 'Distinct Service Component Type during KEY_GEN stage 2');
 
   l_job.IND_STATUS := 'END';
   P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);   

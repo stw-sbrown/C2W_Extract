@@ -2,9 +2,16 @@
 -- TRIGGER SPECIFICATION: Discharge Point Delivery Extract 
 -- AUTHOR         : Dominic Cheung
 -- CREATED        : 21/04/2016
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5148 $
 -- DESCRIPTION    : Trigger to enforce complex validation rules for meter network delivery extract
------------------------------------------------------------------------------------------
+--
+---------------------------- Modification History ----------------------------------------------------------
+--
+-- Version  Date        Author      Description
+-- -------  ----------  ----------- -----------------------------------------------------------------------
+-- V0.01	  11/08/2016	S.Badhan    column on join MANUFACTURERSERIALNUM_P changed to MANUFACTURERSERIALNUM_PK.
+-- V0.01	  21/04/2016	D.Cheung    Initial version.
+------------------------------------------------------------------------------------------------------------
 CREATE OR REPLACE TRIGGER DEL_METER_NETWORK_TRG
     BEFORE
         INSERT
@@ -25,7 +32,7 @@ BEGIN
         INTO   l_spidcount
         FROM   DEL_METER DM
         JOIN DEL_METER_SUPPLY_POINT DS ON (DS.MANUFACTURER_PK = DM.MANUFACTURER_PK
-            AND DS.MANUFACTURERSERIALNUM_PK = DM.MANUFACTURERSERIALNUM_P)
+            AND DS.MANUFACTURERSERIALNUM_PK = DM.MANUFACTURERSERIALNUM_PK)
         WHERE  TRIM(:NEW.MAINMANUFACTURER) = DM.MANUFACTURER_PK
             AND TRIM(:NEW.MAINMANUFACTURERSERIALNUM) = DM.MANUFACTURERSERIALNUM_PK;
     EXCEPTION
@@ -57,5 +64,5 @@ BEGIN
 
 END DEL_METER_NETWORK_TRG;
 /
+show error;
 exit;
-

@@ -9,7 +9,7 @@ PROCEDURE P_MOU_DEL_SERVICE_COMPONENT (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE
 --
 -- FILENAME       : P_MOU_DEL_SERVICE_COMPONENT.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5456 $
 --
 -- CREATED        : 11/04/2016
 --
@@ -31,6 +31,9 @@ PROCEDURE P_MOU_DEL_SERVICE_COMPONENT (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE
 --                                    Special Agreement Flag / Factor / Ref
 -- V1.01       16/05/2016  K.Burton   Changes to file write logic to accomodate cross border
 --                                    files
+-- V1.02       11/07/2016  L.Smith    I-283. Count of MO service components flattened to table DEL_SERVICE_COMPONENT
+-- V1.03       25/08/2016  S.Badhan   I-320. If user FINDEL use directory FINEXPORT.
+-- V1.04       01/09/2016  K.Burton   Updates for splitting STW data into 3 batches
 -----------------------------------------------------------------------------------------
 
   c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_DEL_SERVICE_COMPONENT';
@@ -51,6 +54,7 @@ PROCEDURE P_MOU_DEL_SERVICE_COMPONENT (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE
   l_no_row_exp                  MIG_JOBSTATUS.EXP_TOLERANCE%TYPE;
   l_rec_written                 BOOLEAN;
   l_count                       NUMBER;
+  l_no_sct_count                NUMBER;
   l_filepath VARCHAR2(30) := 'DELEXPORT';
   l_filename VARCHAR2(200);
   l_tablename VARCHAR2(100) := 'DEL_SERVICE_COMPONENT';
@@ -196,7 +200,7 @@ PROCEDURE P_MOU_DEL_SERVICE_COMPONENT (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE
     AND SP.SPID_PK = SCA.SPID_PK(+)
     AND SP.SPID_PK = SW.SPID_PK(+)
     AND SP.SPID_PK = HD.SPID_PK(+)
-    AND EXISTS (SELECT 1 FROM MOUTRAN.MO_SERVICE_COMPONENT WHERE SPID_PK = SP.SPID_PK)
+--    AND EXISTS (SELECT 1 FROM MOUTRAN.MO_SERVICE_COMPONENT WHERE SPID_PK = SP.SPID_PK)
     ORDER BY SP.SPID_PK;
 
   TYPE tab_service_component IS TABLE OF cur_service_component%ROWTYPE INDEX BY PLS_INTEGER;
@@ -216,7 +220,12 @@ BEGIN
    l_no_row_war := 0;
    l_no_row_err := 0;
    l_no_row_exp := 0;
+   l_no_sct_count := 0;
    l_job.IND_STATUS := 'RUN';
+
+   IF USER = 'FINDEL' THEN
+      l_filepath := 'FINEXPORT';
+   END IF;
 
    -- get job no and start job
    P_MIG_BATCH.FN_STARTJOB(no_batch, no_job, c_module_name,
@@ -261,6 +270,7 @@ BEGIN
           -- write the data to the delivery table
           l_progress := 'insert row into DEL_SERVICE_COMPONENT';
           INSERT INTO DEL_SERVICE_COMPONENT VALUES t_service_component(i);
+          COMMIT;
         EXCEPTION
           WHEN OTHERS THEN
                l_no_row_dropped := l_no_row_dropped + 1;
@@ -289,126 +299,50 @@ BEGIN
         -- keep count of records written
         IF l_rec_written THEN
            l_no_row_insert := l_no_row_insert + 1;
-
---           -- now write the record to the ouput file
---           BEGIN
---            l_progress := 'write row export file ';
---
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).SPID_PK) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).METEREDPWTARIFFCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).MPWSPECIALAGREEMENTFLAG) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).MPWSPECIALAGREEMENTFACTOR) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).MPWSPECIALAGREEMENTREF) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).METEREDPWMAXDAILYDEMAND) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).DAILYRESERVEDCAPACITY) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).METEREDNPWTARIFFCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).MNPWSPECIALAGREEMENTFLAG) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).MNPWSPECIALAGREEMENTFACTOR) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).MNPWSPECIALAGREEMENTREF) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).METEREDNPWMAXDAILYDEMAND) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).METEREDNPWDAILYRESVDCAPACITY) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).AWASSESSEDTARIFFCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).AWSPECIALAGREEMENTFLAG) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).AWSPECIALAGREEMENTFACTOR) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).AWSPECIALAGREEMENTREF) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).AWASSESSEDCHARGEMETERSIZE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).AWASSESSEDDVOLUMETRICRATE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).AWASSESSEDTARIFBAND) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWUNMEASUREDTARIFFCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWSPECIALAGREEMENTFLAG) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWSPECIALAGREEMENTFACTOR) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWSPECIALAGREEMENTREF) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWUNMEASUREDTYPEACOUNT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWUNMEASUREDTYPEADESCRIPTION) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWUNMEASUREDTYPEBCOUNT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWUNMEASUREDTYPEBDESCRIPTION) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWUNMEASUREDTYPECCOUNT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWUNMEASUREDTYPECDESCRIPTION) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWUNMEASUREDTYPEDCOUNT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWUNMEASUREDTYPEDDESCRIPTION) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWUNMEASUREDTYPEECOUNT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWUNMEASUREDTYPEEDESCRIPTION) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWUNMEASUREDTYPEFCOUNT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWUNMEASUREDTYPEFDESCRIPTION) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWUNMEASUREDTYPEGCOUNT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWUNMEASUREDTYPEGDESCRIPTION) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).UWUNMEASUREDTYPEHCOUNT) || '|');
---            UTL_FILE.PUT(FHANDLE,TRIM(t_service_component(i).UWUNMEASUREDTYPEHDESCRIPTION) || '|');
---            UTL_FILE.PUT(FHANDLE,TRIM(t_service_component(i).UWPIPESIZE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).WADJCHARGEADJTARIFFCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).METEREDFSTARIFFCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).MFSSPECIALAGREEMENTFLAG) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).MFSSPECIALAGREEMENTFACTOR) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).MFSSPECIALAGREEMENTREF) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).ASASSESSEDTARIFFCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).ASSPECIALAGREEMENTFLAG) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).ASSPECIALAGREEMENTFACTOR) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).ASSPECIALAGREEMENTREF) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).ASASSESSEDCHARGEMETERSIZE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).ASASSESSEDDVOLUMETRICRATE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).ASASSESSEDTARIFBAND) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USUNMEASUREDTARIFFCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USSPECIALAGREEMENTFLAG) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USSPECIALAGREEMENTFACTOR) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USSPECIALAGREEMENTREF) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USUNMEASUREDTYPEACOUNT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USUNMEASUREDTYPEADESCRIPTION) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USUNMEASUREDTYPEBCOUNT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USUNMEASUREDTYPEBDESCRIPTION) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USUNMEASUREDTYPECCOUNT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USUNMEASUREDTYPECDESCRIPTION) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USUNMEASUREDTYPEDCOUNT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USUNMEASUREDTYPEDDESCRIPTION) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USUNMEASUREDTYPEECOUNT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USUNMEASUREDTYPEEDESCRIPTION) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USUNMEASUREDTYPEFCOUNT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USUNMEASUREDTYPEFDESCRIPTION) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USUNMEASUREDTYPEGCOUNT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).USUNMEASUREDTYPEGDESCRIPTION) || '|');
---            UTL_FILE.PUT(FHANDLE,TRIM(T_SERVICE_COMPONENT(I).USUNMEASUREDTYPEHCOUNT) || '|');
---            UTL_FILE.PUT(FHANDLE,TRIM(T_SERVICE_COMPONENT(I).USUNMEASUREDTYPEHDESCRIPTION) || '|');
---            UTL_FILE.PUT(FHANDLE,TRIM(T_SERVICE_COMPONENT(I).USPIPESIZE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).SADJCHARGEADJTARIFFCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).SRFCWATERTARRIFCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).SRFCWATERAREADRAINED) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).SRFCWATERCOMMUNITYCONFLAG) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).SWSPECIALAGREEMENTFLAG) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).SWSPECIALAGREEMENTFACTOR) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).SWSPECIALAGREEMENTREF) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).HWAYDRAINAGETARIFFCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).HWAYSURFACEAREA) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).HWAYCOMMUNITYCONFLAG) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).HDSPECIALAGREEMENTFLAG) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_service_component(i).HDSPECIALAGREEMENTFACTOR) || '|');
---            UTL_FILE.PUT_LINE(fHandle,TRIM(t_service_component(i).HDSPECIALAGREEMENTREF));
---
---        EXCEPTION
---          WHEN OTHERS THEN
---               l_rec_written := FALSE;
---               l_error_number := SQLCODE;
---               l_error_message := SQLERRM;
---
---               P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', substr(l_error_message,1,100),  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
---               l_no_row_exp := l_no_row_exp + 1;
---
---               -- if tolearance limit has een exceeded, set error message and exit out
---               IF (   l_no_row_exp > l_job.EXP_TOLERANCE
---                   OR l_no_row_err > l_job.ERR_TOLERANCE
---                   OR l_no_row_war > l_job.WAR_TOLERANCE)
---               THEN
---                 CLOSE cur_service_component;
---                 l_job.IND_STATUS := 'ERR';
---                 P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', 'Error tolerance level exceeded',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
---                 P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
---                 COMMIT;
---                 return_code := -1;
---                 RETURN;
---               END IF;
---            END;
---
---          IF l_rec_written THEN
---             l_no_row_written := l_no_row_written + 1;
---          END IF;
+           
+           IF t_service_component(i).METEREDPWTARIFFCODE IS NOT NULL THEN
+              l_no_sct_count := l_no_sct_count + 1;
+           END IF;
+           
+           IF t_service_component(i).METEREDNPWTARIFFCODE IS NOT NULL THEN
+              l_no_sct_count := l_no_sct_count + 1;
+           END IF;
+           
+           IF t_service_component(i).AWASSESSEDTARIFFCODE IS NOT NULL THEN
+              l_no_sct_count := l_no_sct_count + 1;
+           END IF;
+           
+           IF t_service_component(i).UWUNMEASUREDTARIFFCODE IS NOT NULL THEN
+              l_no_sct_count := l_no_sct_count + 1;
+           END IF;
+           
+           IF t_service_component(i).WADJCHARGEADJTARIFFCODE IS NOT NULL THEN
+              l_no_sct_count := l_no_sct_count + 1;
+           END IF;
+           
+           IF t_service_component(i).METEREDFSTARIFFCODE IS NOT NULL THEN
+              l_no_sct_count := l_no_sct_count + 1;
+           END IF;
+           
+           IF t_service_component(i).ASASSESSEDTARIFFCODE IS NOT NULL THEN
+              l_no_sct_count := l_no_sct_count + 1;
+           END IF;
+           
+           IF t_service_component(i).USUNMEASUREDTARIFFCODE IS NOT NULL THEN
+              l_no_sct_count := l_no_sct_count + 1;
+           END IF;
+           
+           IF t_service_component(i).SADJCHARGEADJTARIFFCODE IS NOT NULL THEN
+              l_no_sct_count := l_no_sct_count + 1;
+           END IF;
+           
+           IF t_service_component(i).SRFCWATERTARRIFCODE IS NOT NULL THEN
+              l_no_sct_count := l_no_sct_count + 1;
+           END IF;
+           
+           IF t_service_component(i).HWAYDRAINAGETARIFFCODE IS NOT NULL THEN
+              l_no_sct_count := l_no_sct_count + 1;
+           END IF;
         END IF;
     END LOOP;
 
@@ -418,57 +352,41 @@ BEGIN
     CASE w.WHOLESALER_ID 
       WHEN 'ANGLIAN-W' THEN
         l_sql := 'SELECT * FROM DEL_SERVICE_COMPONENT_ANW_V';
-        l_filename := 'SERVICE_COMPONENT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYYYMMDDHH24MISS') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_SERVICE_COMPONENT_ANW_V;
-        END IF;
       WHEN 'DWRCYMRU-W' THEN
         l_sql := 'SELECT * FROM DEL_SERVICE_COMPONENT_WEL_V';
-        l_filename := 'SERVICE_COMPONENT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_SERVICE_COMPONENT_WEL_V;
-        END IF;
       WHEN 'SEVERN-W' THEN
         l_sql := 'SELECT * FROM DEL_SERVICE_COMPONENT_STW_V';
-        l_filename := 'SERVICE_COMPONENT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_SERVICE_COMPONENT_STW_V;
-        END IF;
+      WHEN 'SEVERN-A' THEN
+        l_sql := 'SELECT * FROM DEL_SERVICE_COMPONENT_STWA_V';
+      WHEN 'SEVERN-B' THEN
+        l_sql := 'SELECT * FROM DEL_SERVICE_COMPONENT_STWB_V';
       WHEN 'THAMES-W' THEN
         l_sql := 'SELECT * FROM DEL_SERVICE_COMPONENT_THW_V';
-        l_filename := 'SERVICE_COMPONENT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_SERVICE_COMPONENT_THW_V;
-        END IF;
       WHEN 'WESSEX-W' THEN
         l_sql := 'SELECT * FROM DEL_SERVICE_COMPONENT_WEW_V';
-        l_filename := 'SERVICE_COMPONENT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_SERVICE_COMPONENT_WEW_V;
-        END IF;
       WHEN 'YORKSHIRE-W' THEN
         l_sql := 'SELECT * FROM DEL_SERVICE_COMPONENT_YOW_V';
-        l_filename := 'SERVICE_COMPONENT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_SERVICE_COMPONENT_YOW_V;
-        END IF;
       WHEN 'UNITED-W' THEN
         l_sql := 'SELECT * FROM DEL_SERVICE_COMPONENT_UUW_V';
-        l_filename := 'SERVICE_COMPONENT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_SERVICE_COMPONENT_UUW_V;
-        END IF;
       WHEN 'SOUTHSTAFF-W' THEN
         l_sql := 'SELECT * FROM DEL_SERVICE_COMPONENT_SSW_V';
-        l_filename := 'SERVICE_COMPONENT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_SERVICE_COMPONENT_SSW_V;
-        END IF;
     END CASE;
     IF w.RUN_FLAG = 1 THEN
+      l_filename := 'SERVICE_COMPONENT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
       P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
       l_no_row_written := l_no_row_written + l_rows_written; -- add rows written to total
+      
+      IF w.WHOLESALER_ID NOT LIKE 'SEVERN%' THEN
+        l_filename := 'OWC_SERVICE_COMPONENT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
+        l_sql := 'SELECT  SC.*
+                  FROM DEL_SUPPLY_POINT STW, DEL_SERVICE_COMPONENT_STW_V SC 
+                  WHERE STW.OTHERWHOLESALERID = ''' || w.WHOLESALER_ID || ''' 
+                  AND STW.SPID_PK = SC.SPID_PK';
+        P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);      
+      END IF;
     ELSE
+      l_sql := 'SELECT COUNT(*) FROM DEL_SERVICE_COMPONENT SC, DEL_SUPPLY_POINT SP WHERE SC.SPID_PK = SP.SPID_PK AND SP.WHOLESALERID = :wholesaler';
+      EXECUTE IMMEDIATE l_sql INTO l_count USING w.WHOLESALER_ID;
       l_no_row_dropped_cb := l_no_row_dropped_cb + l_count;
     END IF;
   END LOOP;
@@ -482,7 +400,6 @@ BEGIN
   END LOOP;
 
   CLOSE CUR_SERVICE_COMPONENT;
---  UTL_FILE.FCLOSE(FHANDLE);
 
   -- archive the latest batch
   P_DEL_UTIL_ARCHIVE_TABLE(p_tablename => l_tablename,
@@ -496,7 +413,8 @@ BEGIN
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP37', 2080, l_no_row_read,    'Distinct Service Components read in from Transform tables');
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP37', 2090, l_no_row_dropped, 'Service Components dropped during extract from Transform tables');
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP37', 2095, l_no_row_dropped_cb, 'Cross Border Supply Points not written to any file');
-  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP37', 2100, l_no_row_insert,  'Service Components written to ' || l_tablename || ' from extract');
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP37', 2100, l_no_row_insert,  'Del Service Components written to ' || l_tablename || ' from extract');
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP37', 2101, l_no_sct_count, 'MO Service Components flattened on ' || l_tablename || ' from extract');
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP37', 2110, l_no_row_written, 'Service Components written to file(s) from extract');
 
   l_job.IND_STATUS := 'END';

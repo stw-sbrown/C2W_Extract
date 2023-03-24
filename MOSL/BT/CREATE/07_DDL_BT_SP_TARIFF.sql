@@ -1,8 +1,15 @@
 --Create table BT_SP_TARIFF 
 --N.Henderson - 12/04/2016
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 4454 $
 --Attempt to drop the table first. Will generate warnings if does not
 --exist but can be ignored.
+
+--------------------------- Modification History ---------------------------------------   
+--
+-- Version     Date        Author     Description
+-- ---------   ----------  -------    ---------------------------------------------------
+-- V 0.01      15/06/2016  S.Badhan   removed schema name from comment.
+-----------------------------------------------------------------------------------------
 
 --DROP TABLE BT_SP_TARIFF;
 
@@ -16,7 +23,7 @@
 	DS_REV_CLASS_150 VARCHAR2(60 BYTE) NOT NULL ENABLE
    ) ;
 
-   COMMENT ON TABLE MOUTRAN.BT_SP_TARIFF  IS 'Active Target Tariffs by Service Provision';
+   COMMENT ON TABLE BT_SP_TARIFF  IS 'Active Target Tariffs by Service Provision';
 
    commit;
    exit;

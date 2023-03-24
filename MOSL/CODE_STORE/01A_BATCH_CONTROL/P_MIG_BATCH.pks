@@ -6,7 +6,7 @@ CREATE OR REPLACE PACKAGE P_MIG_BATCH AS
 --
 -- FILENAME       : P_MIG_BATCH.pks
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 4948 $
 -- CREATED        : 23/02/2016
 --
 -- DESCRIPTION    : Package containing common procedures for batch migration :-
@@ -18,6 +18,7 @@ CREATE OR REPLACE PACKAGE P_MIG_BATCH AS
 --
 -- Version     Date                Author         Description
 -- ---------   ---------------     -------        --------------------------------------
+-- V 0.02      23/02/2016          M.Marron       Added to SAPTran Initial Version
 -- V 0.01      23/02/2016          S.Badhan       Initial Version
 ----------------------------------------------------------------------------------------
 
@@ -68,13 +69,6 @@ PROCEDURE FN_RECONLOG(no_batch            IN MIG_CPLOG.NO_BATCH%TYPE,
                       
                       
 END P_MIG_BATCH;
-
---SHOW ERROR;
-
---GRANT EXECUTE ON P_MIG_BATCH TO MOUTRANUSER;
-
-
 /
-
 exit;
 

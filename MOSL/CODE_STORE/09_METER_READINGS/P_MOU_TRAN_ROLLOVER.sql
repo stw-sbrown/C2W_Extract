@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_ROLLOVER.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 6062 $
 --
 -- CREATED        : 04/04/2016
 --
@@ -24,7 +24,9 @@ IS
 --
 -- Version     Date        Author     CR/DEF     Description
 -- ---------   ----------  -------    ------     ---------------------------------------------------
--- V 2.01      12/05/2016  D.Cheung   CR_0##     D40 - Added ESTIMATE Read Sources to Extract Criteria   
+-- V 2.03      01/11/2016  S.Badhan              Performance changes.
+-- V 2.02      26/09/2016  D.Cheung   CR_037     exclude Non-billable reads
+-- V 2.01      12/05/2016  D.Cheung   D40        Added ESTIMATE Read Sources to Extract Criteria   
 -- V 1.01      10/05/2016  D.Cheung              Issue I-173 - Remove VOID Status Rule to align with METER_READING
 -- V 0.01      04/04/2016  D.Cheung              Initial Draft
 -----------------------------------------------------------------------------------------
@@ -51,7 +53,7 @@ IS
 CURSOR cur_met (p_no_equipment_start   BT_TVP163.NO_EQUIPMENT%TYPE,
                  p_no_equipment_end     BT_TVP163.NO_EQUIPMENT%TYPE)
     IS
-      SELECT /*+ PARALLEL(TV163,12) PARALLEL(T195,12) PARALLEL(TELG,12) */
+      SELECT /*+ PARALLEL(TV163,60) PARALLEL(T195,60) PARALLEL(TELG,60) */
       DISTINCT
             TV163.NO_EQUIPMENT
             ,T195.TS_CAPTURED
@@ -63,15 +65,17 @@ CURSOR cur_met (p_no_equipment_start   BT_TVP163.NO_EQUIPMENT%TYPE,
       FROM   BT_TVP163 TV163
       JOIN CIS.TVP195READING T195 ON
           T195.NO_EQUIPMENT = TV163.NO_EQUIPMENT
+          AND  T195.CD_COMPANY_SYSTEM = TV163.CD_COMPANY_SYSTEM
           AND T195.TP_READING = 'M'
           AND T195.CD_MTR_RD_SRCE_98 IN ('N','W','L','P','C','U','H','O','F','G','S','X')
-          AND T195.ST_READING_168 IN ('B','N')
+          AND T195.ST_READING_168 IN ('B')  --V2.02
           AND MONTHS_BETWEEN(SYSDATE, T195.TS_CAPTURED) <= 30
       JOIN CIS.ELIGIBILITY_CONTROL_TABLE TELG ON
           TELG.CD_COMPANY_SYSTEM = TV163.CD_COMPANY_SYSTEM
           AND    TELG.NO_PROPERTY = TV163.NO_PROPERTY
       WHERE  TV163.NO_EQUIPMENT BETWEEN p_no_equipment_start AND p_no_equipment_end
       --AND TRIM(TV163.ST_EQUIP_INST)     = 'A' --Available
+      --AND T195.AM_READING > 0 --V2.02
       ORDER BY TV163.NO_EQUIPMENT ASC, T195.TS_CAPTURED ASC;
 
 TYPE tab_meter IS TABLE OF cur_met%ROWTYPE INDEX BY PLS_INTEGER;

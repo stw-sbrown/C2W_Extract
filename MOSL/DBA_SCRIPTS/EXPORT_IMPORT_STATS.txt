@@ -1,0 +1,37 @@
+-- EXPORT_IMPORT_STATS.txt
+--
+-- Copy statistics from DOWD to DOWS
+--
+exp userid=RECEPTION/DOWD file=RECSTATSTABLE.dmp tables=RECSTATSTABLE
+exp userid=MOUTRAN/DOWD file=TRANSTATSTABLE.dmp tables=TRANSTATSTABLE
+exp userid=MOUDEL/DOWD file=DELSTATSTABLE.dmp tables=DELSTATSTABLE
+
+-- copy and paste all 5 lines
+sqlplus -s /nolog <<EOF
+connect RECEPTION/DOWS
+drop table RECSTATSTABLE;
+exit
+EOF
+
+-- copy and paste all 5 lines
+sqlplus -s /nolog <<EOF
+connect MOUTRAN/DOWS
+drop table TRANSTATSTABLE;
+exit
+EOF
+
+-- copy and paste all 5 lines
+sqlplus -s /nolog <<EOF
+connect MOUDEL/DOWS
+drop table DELSTATSTABLE;
+exit
+EOF
+
+imp userid=RECEPTION/DOWS file=RECSTATSTABLE.dmp tables=RECSTATSTABLE
+imp userid=MOUTRAN/DOWS file=TRANSTATSTABLE.dmp tables=TRANSTATSTABLE
+imp userid=MOUDEL/DOWS file=DELSTATSTABLE.dmp tables=DELSTATSTABLE
+
+sqlplus RECEPTION/DOWS @/recload/DOWS/MOSL/DBA_SCRIPTS/IMPORT_STATS_RECEPTION.sql 
+sqlplus MOUTRAN/DOWS @/recload/DOWS/MOSL/DBA_SCRIPTS/IMPORT_STATS_MOUTRAN.sql 
+sqlplus MOUDEL/DOWS @/recload/DOWS/MOSL/DBA_SCRIPTS/IMPORT_STATS_MOUDEL.sql
+

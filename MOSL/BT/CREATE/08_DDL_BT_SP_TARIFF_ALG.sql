@@ -1,8 +1,15 @@
 --Create table BT_SP_TARIFF_ALG
 --N.Henderson - 12/04/2016
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 4454 $
 --Attempt to drop the table first. Will generate warnings if does not
 --exist but can be ignored.
+
+--------------------------- Modification History ---------------------------------------   
+--
+-- Version     Date        Author     Description
+-- ---------   ----------  -------    ---------------------------------------------------
+-- V 0.01      15/06/2016  S.Badhan   removed schema name from comment.
+-----------------------------------------------------------------------------------------
 
 --DROP TABLE BT_SP_TARIFF_ALG;
 
@@ -16,7 +23,7 @@
   );
   
 
-   COMMENT ON TABLE MOUTRAN.BT_SP_TARIFF_ALG  IS 'Algorithms used by Target Tariff';
+   COMMENT ON TABLE BT_SP_TARIFF_ALG  IS 'Algorithms used by Target Tariff';
    
    commit;
    exit;

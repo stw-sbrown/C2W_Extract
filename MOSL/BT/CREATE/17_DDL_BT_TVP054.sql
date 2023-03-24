@@ -1,7 +1,7 @@
 --
 -- 1_DDL_KeyGen_TVP054.sql
 -- Create key gen table
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5686 $
 -- Date - 23/03/2016
 -- Written By - Surinder Badhan
 --
@@ -9,12 +9,14 @@
 ---------------------------------------------------------------------------------------
 -- Version     Date        Author     Description
 -- ---------   ----------  --------   --------------------------------------------------
+-- V 1.03      29/09/2016  S.Badhan   Create Index on Company and NO_COMBINE_054
+-- V 1.02      15/06/2016  S.Badhan   Removed drop of tables as done in DROP proc
 -- V 1.01      11/04/2016  S.Badhan   Removed meter information and added serv prov status,
 --                                    AGG_NET AND FG_CONSOLIDATED
 -- V 1.00      23/03/2016  S.Badhan   Intial
 ----------------------------------------------------------------------------------------
 
-DROP TABLE BT_TVP054 PURGE;
+--DROP TABLE BT_TVP054 PURGE;
 --DROP PUBLIC SYNONYM BT_TVP054;
 
  CREATE TABLE BT_TVP054 
@@ -53,6 +55,8 @@ CREATE INDEX BT_TVP054_IDX1 ON BT_TVP054 (NO_PROPERTY, CD_COMPANY_SYSTEM);
 CREATE INDEX BT_TVP054_IDX2 ON BT_TVP054 (NO_ACCOUNT, CD_COMPANY_SYSTEM) ;
 
 CREATE INDEX BT_TVP054_IDX3 ON BT_TVP054 (NO_LEGAL_ENTITY, CD_COMPANY_SYSTEM);
+
+CREATE INDEX BT_TVP054_IDX4 ON BT_TVP054 (NO_COMBINE_054, CD_COMPANY_SYSTEM);
 
 COMMENT ON TABLE BT_TVP054  IS 'Key Gen SPR BT_TVP054';
 --CREATE PUBLIC SYNONYM BT_TVP054 FOR BT_TVP054;

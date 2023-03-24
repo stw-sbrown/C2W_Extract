@@ -6,7 +6,7 @@
 -- FILENAME       			: 	MO_P0013.sql
 --
 --
--- Subversion $Revision: 4023 $	
+-- Subversion $Revision: 5329 $	
 --
 -- CREATED        			: 	21/03/2016
 --	
@@ -21,15 +21,13 @@
 --
 ---------------------------- Modification History ----------------------------------------------------------
 --
--- Version     		Date            	Author         Description
--- ---------      		----------      	-------        ------------------------------------------------
+-- Version     	Date          Author         Description
+-- ---------    ----------    -------        ------------------------------------------------
 -- V0.01			21/03/2016		NJH		 Primary key changes 
 --									 Constraint changes	
 --									 Indexes
+-- V0.02		    1/08/2016			S.Badhan		    Remove disable of FK_SERVICECOMPONENTREF_PK01, does not exist.
 --
---
---
--- 
 ------------------------------------------------------------------------------------------------------------
 --Changes
 
@@ -60,7 +58,7 @@ ALTER TABLE MO_METER MODIFY (FREEDESCRIPTOR VARCHAR(1024));
 ALTER TABLE MO_METER MODIFY (METERADDITIONREASON NULL);
 
 --DISABLE FOREIGN KEY CONSTRAINT ON MO_SERVICE_COMPONENT_TYPE, TEMPORARY ONLY, WILL NEED TO BE ENABLED AGAIN AT SOME POINT
-ALTER TABLE MO_SERVICE_COMPONENT DISABLE CONSTRAINT FK_SERVICECOMPONENTREF_PK01;
+--ALTER TABLE MO_SERVICE_COMPONENT DISABLE CONSTRAINT FK_SERVICECOMPONENTREF_PK01;
 
 
 --ADD INDEXES

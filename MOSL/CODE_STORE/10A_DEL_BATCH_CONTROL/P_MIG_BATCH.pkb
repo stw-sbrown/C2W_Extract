@@ -8,7 +8,7 @@ IS
 --
 -- FILENAME       : P_MIG_BATCH.pkb
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5702 $
 --
 -- CREATED        : 23/02/2016
 --
@@ -21,6 +21,10 @@ IS
 --
 -- Version     Date                Author         Description
 -- ---------   ---------------     -------        --------------------------------------
+-- V 1.07      03/10/2016          D.Cheung       Comment out P_DEL_UTIL_BATCH_STATS and move into separate call after batch.
+-- V 1.06      15/09/2016          D.Cheung       Add P_DEL_UTIL_BATCH_STATS
+-- V 1.05      26/07/2016          S.Badhan       I-312 removed as cannot use in a transaction
+-- V 1.04      20/07/2016          S.Badhan       I-312 - Enable parallel processing for session.
 -- V 1.03      15/04/2016          S.Badhan       Removed setting of NO_RANGE_MAX, was 
 --                                                being set twice.
 -- V 1.00      22/03/2016          S.Badhan       Procedures to run added to schedule
@@ -84,13 +88,13 @@ IS
 BEGIN
 
    DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Started ');
-      
+
    l_key := c_module_name ;
    l_progress := 'Add new batch run';
    g_no_batch := 0;
    g_no_job := 0;
 
-   SELECT nvl(MAX(NO_BATCH),0) + 1
+   SELECT GREATEST(nvl(MAX(NO_BATCH),0) + 1,100)
    INTO   l_batch.NO_BATCH
    FROM   MIG_BATCHSTATUS;
 
@@ -255,8 +259,14 @@ BEGIN
       RETURN;
    END IF; 
 
-  FN_UPDATEBATCH('END');
-  DBMS_OUTPUT.PUT_LINE(to_char(sysdate,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended ');
+   -- 11. Generate reference data
+   P_DEL_UTIL_REF_DATA();
+   
+--    12. Generate batch statistics data
+--   P_DEL_UTIL_BATCH_STATS();
+   
+   FN_UPDATEBATCH('END');
+   DBMS_OUTPUT.PUT_LINE(to_char(sysdate,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended ');
 
 EXCEPTION
 WHEN OTHERS THEN     

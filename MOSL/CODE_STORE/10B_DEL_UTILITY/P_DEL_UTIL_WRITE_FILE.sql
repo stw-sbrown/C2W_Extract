@@ -10,7 +10,7 @@ PROCEDURE P_DEL_UTIL_WRITE_FILE(p_query IN VARCHAR2,
 --
 -- FILENAME       : P_DEL_UTIL_WRITE_FILE.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5965 $
 --
 -- CREATED        : 13/05/2016
 --
@@ -22,6 +22,7 @@ PROCEDURE P_DEL_UTIL_WRITE_FILE(p_query IN VARCHAR2,
 -- Version     Date        Author     Description
 -- ---------   ----------  -------    ---------------------------------------------------
 -- V 0.01      13/05/2016  K.Burton   Initial Draft
+-- V 0.02      20/10/2016  K.Burton   Change to append to existing file
 -----------------------------------------------------------------------------------------                                
   v_finaltxt  VARCHAR2(4000);
   v_v_val     VARCHAR2(4000);
@@ -36,7 +37,9 @@ PROCEDURE P_DEL_UTIL_WRITE_FILE(p_query IN VARCHAR2,
   col_num     NUMBER;
   v_fh        UTL_FILE.FILE_TYPE;
   l_lines_written NUMBER;
+  l_static_filename VARCHAR2(100);
 BEGIN
+  l_static_filename := SUBSTR(p_filename,1,INSTR(p_filename,'_',-1)-1) || '.dat';
   l_lines_written := 0;
   c := DBMS_SQL.OPEN_CURSOR;
   DBMS_SQL.PARSE(c, p_query, DBMS_SQL.NATIVE);
@@ -54,7 +57,9 @@ BEGIN
     END CASE;
   END LOOP;
 
-    v_fh := UTL_FILE.FOPEN(p_directory, p_filename, 'w');
+--    v_fh := UTL_FILE.FOPEN(p_directory, p_filename, 'w');
+    v_fh := UTL_FILE.FOPEN(p_directory, l_static_filename, 'a');
+
   LOOP
     v_ret := DBMS_SQL.FETCH_ROWS(c);
     EXIT WHEN v_ret = 0;
@@ -90,6 +95,9 @@ BEGIN
   UTL_FILE.FCLOSE(v_fh);
   DBMS_SQL.CLOSE_CURSOR(c);
   p_lines_written := l_lines_written;
+
+  -- rename file
+  UTL_FILE.FRENAME(p_directory, l_static_filename, p_directory, p_filename, TRUE);
 END P_DEL_UTIL_WRITE_FILE;
 /
 

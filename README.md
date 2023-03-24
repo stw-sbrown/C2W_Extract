@@ -21,10 +21,11 @@ No merging in Git.
 
 1. Import SVN Trunk REV 4028 (SAP Branch point) as GIT Main 
 2. Tag Git Main as main_svn_trunk_rev4028
---HERE
+
 3. Create Git Branch SAP from current Git Main
 4. Import SVN Branch SAP Tip REV 6499 to Git SAP
 5. Create Git Tag SAP_Build76
+--HERE
 
 6. Import SVN Trunk REV 4047 (FIN branch point)
 7. Tag Git Main as main_svn_trunk_rev4047

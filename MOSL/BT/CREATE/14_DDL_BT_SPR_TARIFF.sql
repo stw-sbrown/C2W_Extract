@@ -1,8 +1,16 @@
 --Create table BT_SPR_TARIFF 
 --N.Henderson - 12/04/2016
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5686 $
 --Attempt to drop the table first. Will generate warnings if does not
 --exist but can be ignored.
+
+--------------------------- Modification History ---------------------------------------   
+--
+-- Version     Date        Author     Description
+-- ---------   ----------  -------    ---------------------------------------------------
+-- V 0.02      29/09/2016  S.Badhan   Create index on NO_COMBINE_054 and CD_COMPANY_SYSTEM
+-- V 0.01      15/07/2016  S.Badhan   I-301. Change BT_SPR_TARIFF_IDX1 to be just on NO_COMBINE_054
+-----------------------------------------------------------------------------------------
 
 --DROP TABLE BT_SPR_TARIFF PURGE;
 
@@ -26,7 +34,8 @@
   CREATE INDEX BT_SPR_TARIFF_IDX1 ON BT_SPR_TARIFF (NO_COMBINE_054)  ;
   CREATE INDEX BT_SPR_TARIFF_IDX2 ON BT_SPR_TARIFF (NO_PROPERTY, NO_SERV_PROV, NO_ACCOUNT)  ;
   CREATE INDEX BT_SPR_TARIFF_IDX3 ON BT_SPR_TARIFF (CD_COMPANY_SYSTEM, NO_PROPERTY)  ;
-
+  CREATE INDEX BT_SPR_TARIFF_IDX4 ON BT_SPR_TARIFF (NO_COMBINE_054, DT_END, CD_TARIFF)  ;
+  CREATE INDEX BT_SPR_TARIFF_IDX5 ON BT_SPR_TARIFF (NO_COMBINE_054, CD_COMPANY_SYSTEM)  ;
 
   commit;
   exit;

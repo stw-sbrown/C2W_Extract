@@ -6,7 +6,7 @@
 -- FILENAME       		: 	P00024.sql
 --
 --
--- Subversion $Revision: 4023 $	
+-- Subversion $Revision: 5870 $	
 --
 -- CREATED        		: 	22/04/2016
 --	
@@ -61,9 +61,11 @@ COMMIT;
 -- Version     Date        Author     CP/DEF.     Description
 -- ---------   ----------  --------   ---------	  -------------------------------------
 -- V 1.00      21/04/2016  D.Cheung   CR_03 		  Intial Draft
+-- V 1.01      13/07/2016  D.Cheung               I-291 - Change PK on SIPD_ASSOC to add propertynumber
+-- V 1.02		   13/10/2016	 S.Badhan               Remove drop of MO_METER_SPID_ASSOC as removed in main table drop sql
 ----------------------------------------------------------------------------------------
 
-DROP TABLE MO_METER_SPID_ASSOC purge;
+--DROP TABLE MO_METER_SPID_ASSOC purge;
 ---MO_METER_SPID_ASSOC--
 CREATE TABLE MO_METER_SPID_ASSOC
 (
@@ -90,6 +92,9 @@ COMMENT ON COLUMN MO_METER_SPID_ASSOC.STWPROPERTYNUMBER_PK  IS 'STW TARGET NO_PR
 COMMENT ON COLUMN MO_METER_SPID_ASSOC.MANUFACTURER_PK IS 'Meter Manufacturer~~~D3013 - Specifies the make and/or manufacturer of a meter.  STW010 - A concatination of both the Meter manufacturer value and Meter serial number are to be stored in Meter Manufacturer field.  Reason bng that there are instances where the serial number is not unique.';
 COMMENT ON COLUMN MO_METER_SPID_ASSOC.MANUFACTURERSERIALNUM_PK IS 'Manufacturer Meter Serial Number~~~D3014 - Specifies the manufacturer’s serial number of a meter. STW011 - A concatination of both the Meter manufacturer value and Meter serial number are to be stored in Meter Serial field.  Reason bng that there are instances where the serial number is not unique.';
 COMMENT ON COLUMN MO_METER_SPID_ASSOC.SPID IS 'SPID~~~D2001 - Unique identifier allocated to each Supply Point by the Market Operator';
+
+ALTER TABLE MO_METER_SPID_ASSOC DROP CONSTRAINT PK_METERSPIDASSOC_COMP;
+ALTER TABLE MO_METER_SPID_ASSOC ADD CONSTRAINT PK_METERSPIDASSOC_COMP PRIMARY KEY (MANUFACTURER_PK,MANUFACTURERSERIALNUM_PK, STWPROPERTYNUMBER_PK);
 
 Commit;
 /

@@ -6,7 +6,7 @@
 -- FILENAME       		: 	MO_P00017.sql
 --
 --
--- Subversion $Revision: 4023 $	
+-- Subversion $Revision: 5870 $	
 --
 -- CREATED        		: 	13/04/2016
 --	
@@ -21,24 +21,20 @@
 --
 ---------------------------- Modification History ----------------------------------------------------------
 --
--- Version     		Date            Author         	Description
--- ---------      	----------      -------         ------------------------------------------------
--- V0.01		13/04/2016	D.CHEUNG        Drop Constraint SYS_C0041412 on MO_METER_READING
---							ADD COMPOSITE PRIMARY KEY ON MO_METER_READING
---                                                  
---
---
---
---
--- 
+-- Version     Date         Author       Description
+-- ---------   ----------   -------      -----------------------------------------------------------------
+-- V0.02		   13/10/2016		S.Badhan     Remove create of PK_METERREADING_COMP as fields do not exist yet.
+-- V0.01		   13/04/2016	  D.CHEUNG     Drop Constraint SYS_C0041412 on MO_METER_READING
+--							                         ADD COMPOSITE PRIMARY KEY ON MO_METER_READING
 ------------------------------------------------------------------------------------------------------------
 --CHANGES
 ------------------------------------------------------
 --DROP CONSTRAINT SYS_C0041412
 --ALTER TABLE MO_METER_READING DROP CONSTRAINT SYS_C0041412;
 --ADD COMPOSITE PRIMARY KEY ON MO_METER_READING
-ALTER TABLE MO_METER_READING ADD CONSTRAINT PK_METERREADING_COMP PRIMARY KEY (METERREF,METERREADDATE);
-commit;
+--ALTER TABLE MO_METER_READING ADD CONSTRAINT PK_METERREADING_COMP PRIMARY KEY (METERREF,METERREADDATE);
+--commit;
+
 exit;
 
 

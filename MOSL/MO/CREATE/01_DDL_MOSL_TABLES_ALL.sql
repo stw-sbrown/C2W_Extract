@@ -7,7 +7,7 @@
 --
 -- CREATED        		: 	22/02/2016
 --	
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5870 $
 --
 -- DESCRIPTION 		   	: 	Creates all core and tariff tables for the MOSL database
 --
@@ -34,12 +34,10 @@
 --									Doing something wierd when running query from
 --									command line.
 -- V0.03 		15/03/2016		N.Henderson 		Updates to check constraints, human readable names for constraints
--- 
---
---
---
---
--- 
+-- V0.04 		12/07/2016		M.Marron        I-290 updated Tariffstatus
+-- V0.05    26/09/2016    K.Burton        Added global temporary table OWC_SERVICE_COMPONENT_TMP for OWC data import
+-- V0.06    11/10/2016    S.Badhan        Make global temporary table OWC_SERVICE_COMPONENT_TMP preserve data after commit
+-- V0.07    14/10/2016    K.Burton        Added index to MO_DISCHARGE_POINT
 ------------------------------------------------------------------------------------------------------------
 --MO_CUSTOMER
 
@@ -264,6 +262,9 @@ DPIDSPECIALAGREEMENTINPLACE NUMBER(1) CONSTRAINT CH01_DPIDSPECIALAGREEMENT NOT N
 DPIDSPECIALAGREEMENTFACTOR NUMBER(2,2) ,
 DPIDSPECIALAGREEMENTREFERENCE VARCHAR(12) 
 );
+
+CREATE INDEX IDX_STWSPID_DP ON MO_DISCHARGE_POINT(SPID_PK);
+
 --MO_CALCULATED_DISCHARGE--
 CREATE TABLE MO_CALCULATED_DISCHARGE
 (
@@ -450,7 +451,7 @@ TARIFFCODE_PK VARCHAR(32)  ,
 SERVICECOMPONENTREF_PK NUMBER(9) ,
 TARIFFEFFECTIVEFROMDATE DATE ,
 TARIFFNAME VARCHAR(40) ,
-TARIFFSTATUS VARCHAR(7) CONSTRAINT CH01_TARIFFSTATUS NOT NULL,
+TARIFFSTATUS VARCHAR(8) CONSTRAINT CH01_TARIFFSTATUS NOT NULL,
 TARIFFLEGACYEFFECTIVEFROMDATE DATE ,
 APPLICABLESERVICECOMPONENT VARCHAR(5) ,
 TARIFFAUTHCODE VARCHAR(12) ,
@@ -466,7 +467,7 @@ TARIFF_VERSION_PK NUMBER(12)  ,
 TARIFFCODE_PK VARCHAR(32) ,
 TARIFFVERSION VARCHAR(32) CONSTRAINT CH03_TARIFFVERSION NOT NULL,
 TARIFFVEREFFECTIVEFROMDATE DATE CONSTRAINT CH03_TARIFFVEREFFECFROMDATE NOT NULL,
-TARIFFSTATUS VARCHAR(7) CONSTRAINT CH03_TARIFFSTATUS NOT NULL,
+TARIFFSTATUS VARCHAR(8) CONSTRAINT CH03_TARIFFSTATUS NOT NULL,
 APPLICABLESERVICECOMPONENT VARCHAR(5) CONSTRAINT CH03_APPLICABLESERVICECOMP NOT NULL,
 DEFAULTRETURNTOSEWER NUMBER(2,2) ,
 TARIFFCOMPONENTTYPE VARCHAR(12) ,
@@ -829,6 +830,54 @@ TARIFF_TYPE_PK NUMBER(12) ,
 UPPERANNUALVOL NUMBER(12) ,
 CHARGE NUMBER(6,2) 
 );
+
+CREATE GLOBAL TEMPORARY TABLE OWC_SERVICE_COMPONENT_TMP
+(
+  SERVICECOMPONENTREF_PK                  NUMBER(12),                                                                                                                                                                                    
+  TARIFFCODE_PK                           VARCHAR2(32),                                                                                                                                                                                  
+  SPID_PK                                 VARCHAR2(13),                                                                                                                                                                                  
+  DPID_PK                                 VARCHAR2(13),                                                                                                                                                                                  
+  STWPROPERTYNUMBER_PK                    NUMBER(9),                                                                                                                                                                                     
+  STWSERVICETYPE                          VARCHAR2(5),                                                                                                                                                                                   
+  SERVICECOMPONENTTYPE                    VARCHAR2(4),                                                                                                                                                                                   
+  SERVICECOMPONENTENABLED                 NUMBER(1),                                                                                                                                                                                     
+  EFFECTIVEFROMDATE                       DATE,                                                                                                                                                                                          
+  SPECIALAGREEMENTFACTOR                  NUMBER(5,2),                                                                                                                                                                                   
+  SPECIALAGREEMENTFLAG                    NUMBER(1),                                                                                                                                                                                     
+  SPECIALAGREEMENTREF                     VARCHAR2(12),                                                                                                                                                                                  
+  METEREDFSMAXDAILYDEMAND                 VARCHAR2(32),                                                                                                                                                                                  
+  METEREDPWMAXDAILYDEMAND                 NUMBER(12),                                                                                                                                                                                    
+  METEREDNPWMAXDAILYDEMAND                NUMBER(12),                                                                                                                                                                                    
+  METEREDFSDAILYRESVDCAPACITY             NUMBER(12),                                                                                                                                                                                    
+  METEREDNPWDAILYRESVDCAPACITY            NUMBER(12),                                                                                                                                                                                    
+  DAILYRESERVEDCAPACITY                   NUMBER(12),                                                                                                                                                                                    
+  HWAYSURFACEAREA                         NUMBER(12),                                                                                                                                                                                    
+  HWAYCOMMUNITYCONFLAG                    NUMBER(1),                                                                                                                                                                                     
+  ASSESSEDDVOLUMETRICRATE                 NUMBER(12),                                                                                                                                                                                    
+  ASSESSEDCHARGEMETERSIZE                 NUMBER(4),                                                                                                                                                                                     
+  ASSESSEDTARIFBAND                       NUMBER(2),                                                                                                                                                                                     
+  SRFCWATERAREADRAINED                    NUMBER(12),                                                                                                                                                                                    
+  SRFCWATERCOMMUNITYCONFLAG               NUMBER(1),                                                                                                                                                                                     
+  UNMEASUREDTYPEACOUNT                    NUMBER(3),                                                                                                                                                                                     
+  UNMEASUREDTYPEBCOUNT                    NUMBER(3),                                                                                                                                                                                     
+  UNMEASUREDTYPECCOUNT                    NUMBER(3),                                                                                                                                                                                     
+  UNMEASUREDTYPEDCOUNT                    NUMBER(3),                                                                                                                                                                                     
+  UNMEASUREDTYPEECOUNT                    NUMBER(3),                                                                                                                                                                                     
+  UNMEASUREDTYPEFCOUNT                    NUMBER(3),                                                                                                                                                                                     
+  UNMEASUREDTYPEGCOUNT                    NUMBER(3),                                                                                                                                                                                     
+  UNMEASUREDTYPEHCOUNT                    NUMBER(3),                                                                                                                                                                                     
+  UNMEASUREDTYPEADESCRIPTION              VARCHAR2(255),                                                                                                                                                                                 
+  UNMEASUREDTYPEBDESCRIPTION              VARCHAR2(255),                                                                                                                                                                                 
+  UNMEASUREDTYPECDESCRIPTION              VARCHAR2(255),                                                                                                                                                                                 
+  UNMEASUREDTYPEDDESCRIPTION              VARCHAR2(255),                                                                                                                                                                                 
+  UNMEASUREDTYPEEDESCRIPTION              VARCHAR2(255),                                                                                                                                                                                 
+  UNMEASUREDTYPEFDESCRIPTION              VARCHAR2(255),                                                                                                                                                                                 
+  UNMEASUREDTYPEGDESCRIPTION              VARCHAR2(255),                                                                                                                                                                                 
+  UNMEASUREDTYPEHDESCRIPTION              VARCHAR2(255),                                                                                                                                                                                 
+  PIPESIZE                                NUMBER(4),
+  OWC                                     VARCHAR2(30)
+)
+ON COMMIT PRESERVE ROWS;
 
 commit;
 exit;

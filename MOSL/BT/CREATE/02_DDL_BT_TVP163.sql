@@ -1,6 +1,6 @@
 --
 -- 1_DDL_KeyGen_TVP163.sql
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5870 $
 -- Create METER key gen table
 -- Date - 06/04/2016
 -- Written By - Dominic Cheung
@@ -9,11 +9,12 @@
 ----------------------------------------------------------------------------------------
 -- Version     Date        Author     Description
 -- ---------   ----------  --------   --------------------------------------------------
+-- V 1.02      13/10/2016  S.Badhan   Remove DROP TABLE BT_TVP163 as preceeding sql drops all BT tables.
 -- V 1.01      13/04/2016  S.Badhan   Added AGG_NET AND FG_CONSOLIDATED.
 -- V 1.00      06/04/2016  D.Cheung   Intial Version.
 ----------------------------------------------------------------------------------------
 
-DROP TABLE BT_TVP163 PURGE;
+--DROP TABLE BT_TVP163 PURGE;
 --DROP PUBLIC SYNONYM BT_TVP163;
 
  CREATE TABLE BT_TVP163 

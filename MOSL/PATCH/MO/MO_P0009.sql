@@ -6,7 +6,7 @@
 -- FILENAME       		: 	P00009.sql
 --
 --
--- Subversion $Revision: 4023 $	
+-- Subversion $Revision: 5329 $	
 --
 --Date 						11/03/2016
 --Issue: 					Removal of table MO_RETAILER_REGISTRATION.  This table is extra to requirements.
@@ -17,8 +17,9 @@
 --
 ---------------------------- Modification History ----------------------------------------------------------
 --
--- Version     		Date            Author         	Description
--- ---------      	----------      -------         ------------------------------------------------
+-- Version     	Date            Author         	Description
+-- ---------    ----------      -------         ------------------------------------------------
+-- V0.01		    31/08/2016			S.Badhan		    Remove addition of column ORGDESCRIPTION, already exists.
 -- 
 --
 --
@@ -29,8 +30,8 @@ ALTER TABLE MO_SUPPLY_POINT DROP CONSTRAINT FK_RETAILERID_PK01;
 ALTER TABLE MO_RETAILER_REGISTRATION DROP CONSTRAINT FK_RETAILERID_PK02; 
 ALTER TABLE MO_RETAILER_REGISTRATION DROP CONSTRAINT FK_SPID_PK01;
 DROP TABLE MO_RETAILER_REGISTRATION;
-ALTER TABLE MO_SUPPLY_POINT ADD CONSTRAINT FK_RETAILERID_PK02 FOREIGN KEY ("RETAILERID_PK") REFERENCES "MO_ORG"("ORGID_PK");
-ALTER TABLE MO_ORG add ORGDESCRIPTION VARCHAR(255);
+alter table mo_supply_point add constraint fk_retailerid_pk02 foreign key ("RETAILERID_PK") references "MO_ORG"("ORGID_PK");
+--ALTER TABLE MO_ORG add ORGDESCRIPTION VARCHAR(255);
 -- add constraint to new field
 commit;
 exit;

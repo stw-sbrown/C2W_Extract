@@ -1,11 +1,14 @@
 --Create table BT_SPR_TARIFF_EXTREF 
 --N.Henderson - 12/04/2016
--- Subversion $Revision: 4023 $
---Attempt to drop the table first. Will generate warnings if does not
---exist but can be ignored.
-
---DROP TABLE BT_SPR_TARIFF_EXTREF PURGE;
-
+-- Subversion $Revision: 5973 $
+--
+--------------------------- Modification History ---------------------------------------   
+--
+-- Version     Date        Author      Description
+-- ---------   ----------  -------     --------------------------------------------------
+-- V 0.02      13/10/2016  S.Badhan    Add new index.
+-- V 0.01      12/04/2016  N.Henderson Initial Draft.
+-----------------------------------------------------------------------------------------
 
   CREATE TABLE BT_SPR_TARIFF_EXTREF 
    (CD_COMPANY_SYSTEM CHAR(4 BYTE) NOT NULL ENABLE, 
@@ -32,7 +35,9 @@
 
   COMMENT ON TABLE BT_SPR_TARIFF_EXTREF  IS 'BT_SPR_TARIFF_EXTREF';
 
-  CREATE INDEX BT_SPR_TARIFF_EXTREF ON BT_SPR_TARIFF_EXTREF (NO_PROPERTY, NO_SERV_PROV, TP_ENTITY_332, DS_EXT_REFERENCE)  ;
+  CREATE INDEX BT_SPR_TARIFF_EXTREF_IDX1 ON BT_SPR_TARIFF_EXTREF (NO_PROPERTY, NO_SERV_PROV, TP_ENTITY_332, DS_EXT_REFERENCE)  ;
   
+  CREATE INDEX BT_SPR_TARIFF_EXTREF_IDX2 ON BT_SPR_TARIFF_EXTREF (CD_EXT_REF, TP_ENTITY_332, NO_EXT_REFERENCE,CD_SERV_PROV) ;
+    
   commit;
   exit;

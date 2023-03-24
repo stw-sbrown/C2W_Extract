@@ -6,7 +6,7 @@
 --
 -- CREATED        		: 	26/02/2016
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 6420 $
 --	
 -- DESCRIPTION 		   	: Create all MIG tables required for MOSL database
 --
@@ -14,9 +14,12 @@
 --
 ---------------------------- Modification History ----------------------------------------------------------
 --
--- Version     		Date          	Author         		Description
--- ---------      	----------     -------            	 ------------------------------------------------
--- V0.01       		26/02/2016    	S.BADHAN	     	Initial version 
+-- Version     		Date          	Author        Description
+-- ---------      ----------     -------        -----------------------------------------------------------
+-- V0.04          01/12/2016    D.Cheung        Increase length of NO_ERR field on MIG_ERRREF
+-- V0.03       		19/09/2016    S.BADHAN	     	Add index on MIG_PHASE_KEYGEN.
+-- V0.02       		14/09/2016    S.BADHAN	     	Add MIG_PHASE_KEYGEN.
+-- V0.01       		26/02/2016    S.BADHAN	     	Initial version 
 ------------------------------------------------------------------------------------------------------------
 --CREATE TABLES--
 
@@ -62,7 +65,7 @@ CREATE TABLE "MIG_ERRORLOG"
 "TS_CREATED" TIMESTAMP (6) NOT NULL ENABLE, 
 "NO_SEQ" NUMBER(5,0) NOT NULL ENABLE, 
 "IND_LOG" VARCHAR2(1 BYTE) NOT NULL ENABLE, 
-"NO_ERR" NUMBER(3,0) NOT NULL ENABLE, 
+"NO_ERR" NUMBER(4,0) NOT NULL ENABLE, 
 "TXT_KEY" VARCHAR2(30 BYTE) NOT NULL ENABLE, 
 "TXT_DATA" VARCHAR2(100 BYTE), 
 CONSTRAINT "MIG_PK_ERRORLOG" UNIQUE ("NO_BATCH", "NO_INSTANCE", "TS_CREATED", "NO_SEQ")
@@ -72,7 +75,7 @@ CONSTRAINT "MIG_PK_ERRORLOG" UNIQUE ("NO_BATCH", "NO_INSTANCE", "TS_CREATED", "N
 CREATE TABLE "MIG_ERRREF" 
 (
 "IND_LOG" VARCHAR2(1 BYTE) NOT NULL ENABLE, 
-"NO_ERR" NUMBER(3,0) NOT NULL ENABLE, 
+"NO_ERR" NUMBER(4,0) NOT NULL ENABLE, 
 "TXT_ERR" VARCHAR2(100 BYTE) NOT NULL ENABLE, 
 CONSTRAINT "MIG_PK_ERRREF" UNIQUE ("IND_LOG", "NO_ERR")
 );
@@ -120,6 +123,20 @@ COMMENT ON TABLE "MIG_ERRREF"  IS 'MIG_ERRREF';
 COMMENT ON TABLE "MIG_ERRORLOG"  IS 'MIG_ERRORLOG';
 COMMENT ON TABLE "MIG_CPREF"  IS 'MIG_CPREF';
 COMMENT ON TABLE "MIG_CPLOG"  IS 'MIG_CPLOG';
+
+
+CREATE TABLE MIG_PHASE_KEYGEN 
+(
+PHASE           VARCHAR2(30 BYTE) NOT NULL ENABLE, 
+TS_BATCH        DATE,
+FG_INLC_BATCH   VARCHAR2(1) NOT NULL ENABLE, 
+FG_KEYGEN_PRC   VARCHAR2(1) NOT NULL ENABLE, 
+TS_KEYGEN       DATE,
+NO_BATCH        NUMBER(4)
+);
+
+CREATE INDEX IDX01_MIG_PHASE_KEYGEN ON MIG_PHASE_KEYGEN(FG_INLC_BATCH, FG_KEYGEN_PRC ); 
+
 
 commit;
 exit;

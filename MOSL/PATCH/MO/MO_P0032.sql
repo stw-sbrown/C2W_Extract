@@ -4,7 +4,7 @@
 -- DESCRIPTION 		   	: 	Add Customer Constraints
 --
 --
--- Subversion $Revision: 4023 $	
+-- Subversion $Revision: 5870 $	
 --							
 --
 -- ASSOCIATED FILES		:	
@@ -13,12 +13,13 @@
 --
 ---------------------------- Modification History ----------------------------------------------------------
 --
--- Version     		Date            Author         	Description
--- ---------      	----------      -------         ------------------------------------------------
--- V0.01		19/05/201       M.Marron	Drop FK_CUST_ADDR constraints to MOUTRAN tariff tables
+-- Version    Date            Author       Description
+-- ---------  ----------      -------      -----------------------------------------------------------------
+-- V0.02      13/10/2016      S.Badhan     Remove drop of FK_CUST_ADDR, does not exist
+-- V0.01		  19/05/201       M.Marron	   Drop FK_CUST_ADDR constraints to MOUTRAN tariff tables
 ------------------------------------------------------------------------------------------------------------
 -- CHANGES
 ------------------------------------------------------------------------------------------------------------
-ALTER TABLE MO_CUSTOMER DROP CONSTRAINT FK_CUST_ADDR;
-commit;
+--ALTER TABLE MO_CUSTOMER DROP CONSTRAINT FK_CUST_ADDR;
+--commit;
 exit;

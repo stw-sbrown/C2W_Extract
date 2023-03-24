@@ -6,7 +6,7 @@
 -- FILENAME       		: 	DEL_P0006.sql
 --
 --
--- Subversion $Revision: 4023 $	
+-- Subversion $Revision: 5194 $	
 --
 -- CREATED        		: 	05/05/2016
 --	
@@ -30,6 +30,13 @@
 --                                                   MOSL file upload feedback 
 --                                                2. Change to DEL_SERVICE_COMPONENT_TRG special agreement validation
 --                                                   following MOSL file upload feedback
+-- V0.03         15/06/2016      L.Smith          3. Transactional guidance v1.6 10-Jun-2016
+--                                                   The Special Agreement Factor field must not be populated if the tariff code
+--                                                   used relates to the service types Water Charge Adjustment or Sewerage
+--                                                   Charge Adjustment, else it needs to be populated. 
+--                                                   If there is no special agreement (i.e. the Special Agreement Flag = 0)
+--                                                   then the default value 100 can be used for the Special Agreement Factor field.
+-- V0.04          15/08/2016      S.Badhan        I-320. Remove schema name from trigger.
 ------------------------------------------------------------------------------------------------------------
 
 create or replace
@@ -52,13 +59,15 @@ BEGIN
 END;
 
 /
-ALTER TRIGGER MOUDEL.DEL_SUPPLY_POINT_TRG ENABLE;
+ALTER TRIGGER DEL_SUPPLY_POINT_TRG ENABLE;
 /
 
 create or replace
 TRIGGER DEL_METER_TRG
   BEFORE INSERT OR UPDATE ON DEL_METER
   FOR EACH ROW
+DECLARE  
+  l_gis_code VARCHAR(60);
 BEGIN
   --INITIAL METER READ DATE SHOULD BE BEFORE MARKET OPERATION DA, I.E. LESS THAN TODAY DATE
   IF( :NEW.INITIALMETERREADDATE >= SYSDATE ) THEN
@@ -68,9 +77,18 @@ BEGIN
   IF FN_VALIDATE_POSTCODE(UPPER(:NEW.POSTCODE)) = 'INVALID' THEN
     RAISE_APPLICATION_ERROR( -20001, 'Invalid Postcode Error');
   END IF;
+  
+  IF :NEW.GPSX IS NULL AND :NEW.GPSY IS NULL THEN
+    l_gis_code := FN_VALIDATE_GIS(NULL);
+  ELSE
+    l_gis_code := FN_VALIDATE_GIS(:NEW.GPSX || ';' || :NEW.GPSY);
+  END IF;
+  IF l_gis_code LIKE 'Invalid%' THEN
+    RAISE_APPLICATION_ERROR( -20099, l_gis_code);
+  END IF;
 END;
 /
-ALTER TRIGGER MOUDEL.DEL_METER_TRG ENABLE;
+ALTER TRIGGER DEL_METER_TRG ENABLE;
 /
 create or replace
 TRIGGER DEL_DISCHARGE_POINT_TRG
@@ -82,7 +100,7 @@ BEGIN
   END IF;
 END;
 /
-ALTER TRIGGER MOUDEL.DEL_DISCHARGE_POINT_TRG ENABLE;
+ALTER TRIGGER DEL_DISCHARGE_POINT_TRG ENABLE;
 /
 create or replace
 TRIGGER DEL_METER_READING_TRG
@@ -121,7 +139,7 @@ BEGIN
   END;
 END;
 /
-ALTER TRIGGER MOUDEL.DEL_METER_READING_TRG ENABLE;
+ALTER TRIGGER DEL_METER_READING_TRG ENABLE;
 /
 create or replace
 TRIGGER DEL_SERVICE_COMPONENT_TRG
@@ -138,7 +156,7 @@ BEGIN
         RAISE_APPLICATION_ERROR( -20001, 'Metered Potable Water Special Agreement Data Error: Special Agreement Reference invalid');
       END IF;
     ELSIF (:NEW.MPWSPECIALAGREEMENTFLAG = 0) THEN -- if the special agreement flag = 0 then the factor should be 0 and reference data should be NA
-      IF(:NEW.MPWSPECIALAGREEMENTFACTOR <> 0) THEN
+      IF(:NEW.MPWSPECIALAGREEMENTFACTOR <> 100) THEN
         RAISE_APPLICATION_ERROR( -20001, 'Metered Potable Water Special Agreement Data Error: Special Agreement Factor invalid');
       END IF;
       IF(:NEW.MPWSPECIALAGREEMENTREF <> 'NA') THEN
@@ -165,7 +183,7 @@ BEGIN
         RAISE_APPLICATION_ERROR( -20002, 'Metered Non-Potable Water Special Agreement Data Error: Special Agreement Reference invalid');
       END IF;
     ELSIF (:NEW.MNPWSPECIALAGREEMENTFLAG = 0) THEN -- if the special agreement flag = 0 then the factor should be 0 and reference data should be NA
-      IF(:NEW.MNPWSPECIALAGREEMENTFACTOR <> 0) THEN
+      IF(:NEW.MNPWSPECIALAGREEMENTFACTOR <> 100) THEN
         RAISE_APPLICATION_ERROR( -20002, 'Metered Non-Potable Water Special Agreement Data Error: Special Agreement Factor invalid');
       END IF;
       IF(:NEW.MNPWSPECIALAGREEMENTREF <> 'NA') THEN
@@ -192,7 +210,7 @@ BEGIN
         RAISE_APPLICATION_ERROR( -20003, 'Assessed Water Special Agreement Data Error: Special Agreement Reference invalid');
       END IF;
     ELSIF (:NEW.AWSPECIALAGREEMENTFLAG = 0) THEN -- if the special agreement flag = 0 then the factor should be 0 and reference data should be NA
-      IF(:NEW.AWSPECIALAGREEMENTFACTOR <> 0) THEN
+      IF(:NEW.AWSPECIALAGREEMENTFACTOR <> 100) THEN
         RAISE_APPLICATION_ERROR( -20003, 'Assessed Water Special Agreement Data Error: Special Agreement Factor invalid');
       END IF;
       IF(:NEW.AWSPECIALAGREEMENTREF <> 'NA') THEN
@@ -219,7 +237,7 @@ BEGIN
         RAISE_APPLICATION_ERROR( -20004, 'Assessed Sewerage Special Agreement Data Error: Special Agreement Reference invalid');
       END IF;
     ELSIF (:NEW.ASSPECIALAGREEMENTFLAG = 0) THEN -- if the special agreement flag = 0 then the factor should be 0 and reference data should be NA
-      IF(:NEW.ASSPECIALAGREEMENTFACTOR <> 0) THEN
+      IF(:NEW.ASSPECIALAGREEMENTFACTOR <> 100) THEN
         RAISE_APPLICATION_ERROR( -20004, 'Assessed Sewerage Special Agreement Data Error: Special Agreement Factor invalid');
       END IF;
       IF(:NEW.ASSPECIALAGREEMENTREF <> 'NA') THEN
@@ -246,7 +264,7 @@ BEGIN
         RAISE_APPLICATION_ERROR( -20005, 'Unmeasured Water Special Agreement Data Error: Special Agreement Reference invalid');
       END IF;
     ELSIF (:NEW.UWSPECIALAGREEMENTFLAG = 0) THEN -- if the special agreement flag = 0 then the factor should be 0 and reference data should be NA
-      IF(:NEW.UWSPECIALAGREEMENTFACTOR <> 0) THEN
+      IF(:NEW.UWSPECIALAGREEMENTFACTOR <> 100) THEN
         RAISE_APPLICATION_ERROR( -20005, 'Unmeasured Water Special Agreement Data Error: Special Agreement Factor invalid');
       END IF;
       IF(:NEW.UWSPECIALAGREEMENTREF <> 'NA') THEN
@@ -273,7 +291,7 @@ BEGIN
         RAISE_APPLICATION_ERROR( -20006, 'Unmeasured Sewerage Special Agreement Data Error: Special Agreement Reference invalid');
       END IF;
     ELSIF (:NEW.USSPECIALAGREEMENTFLAG = 0) THEN -- if the special agreement flag = 0 then the factor should be 0 and reference data should be NA
-      IF(:NEW.USSPECIALAGREEMENTFACTOR <> 0) THEN
+      IF(:NEW.USSPECIALAGREEMENTFACTOR <> 100) THEN
         RAISE_APPLICATION_ERROR( -20006, 'Unmeasured Sewerage Special Agreement Data Error: Special Agreement Factor invalid');
       END IF;
       IF(:NEW.USSPECIALAGREEMENTREF <> 'NA') THEN
@@ -300,7 +318,7 @@ BEGIN
         RAISE_APPLICATION_ERROR( -20007, 'Metered Sewerage Special Agreement Data Error: Special Agreement Reference invalid');
       END IF;
     ELSIF (:NEW.MFSSPECIALAGREEMENTFLAG = 0) THEN -- if the special agreement flag = 0 then the factor should be 0 and reference data should be NA
-      IF(:NEW.MFSSPECIALAGREEMENTFACTOR <> 0) THEN
+      IF(:NEW.MFSSPECIALAGREEMENTFACTOR <> 100) THEN
         RAISE_APPLICATION_ERROR( -20007, 'Metered Sewerage Special Agreement Data Error: Special Agreement Factor invalid');
       END IF;
       IF(:NEW.MFSSPECIALAGREEMENTREF <> 'NA') THEN
@@ -327,7 +345,7 @@ BEGIN
         RAISE_APPLICATION_ERROR( -20008, 'Surface Water Drainage Special Agreement Data Error: Special Agreement Reference invalid');
       END IF;
     ELSIF (:NEW.SWSPECIALAGREEMENTFLAG = 0) THEN -- if the special agreement flag = 0 then the factor should be 0 and reference data should be NA
-      IF(:NEW.SWSPECIALAGREEMENTFACTOR <> 0) THEN
+      IF(:NEW.SWSPECIALAGREEMENTFACTOR <> 100) THEN
         RAISE_APPLICATION_ERROR( -20008, 'Surface Water Drainage Special Agreement Data Error: Special Agreement Factor invalid');
       END IF;
       IF(:NEW.SWSPECIALAGREEMENTREF <> 'NA') THEN
@@ -354,7 +372,7 @@ BEGIN
         RAISE_APPLICATION_ERROR( -20009, 'Highway Drainage Special Agreement Data Error: Special Agreement Reference invalid');
       END IF;
     ELSIF (:NEW.HDSPECIALAGREEMENTFLAG = 0) THEN -- if the special agreement flag = 0 then the factor should be 0 and reference data should be NA
-      IF(:NEW.HDSPECIALAGREEMENTFACTOR <> 0) THEN
+      IF(:NEW.HDSPECIALAGREEMENTFACTOR <> 100) THEN
         RAISE_APPLICATION_ERROR( -20009, 'Highway Drainage Special Agreement Data Error: Special Agreement Factor invalid');
       END IF;
       IF(:NEW.HDSPECIALAGREEMENTREF <> 'NA') THEN
@@ -372,6 +390,6 @@ BEGIN
   END IF;
 END;
 /
-ALTER TRIGGER MOUDEL.DEL_SERVICE_COMPONENT_TRG ENABLE;
+ALTER TRIGGER DEL_SERVICE_COMPONENT_TRG ENABLE;
 /
 exit;

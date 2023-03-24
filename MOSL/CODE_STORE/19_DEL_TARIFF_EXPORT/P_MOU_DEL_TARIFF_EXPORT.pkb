@@ -7,7 +7,7 @@ PACKAGE BODY P_MOU_DEL_TARIFF_EXPORT AS
 --
 -- FILENAME       : P_DEL_TARIFF_EXPORT_PKG.pkb
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5284 $
 --
 -- CREATED        : 31/03/2016
 --
@@ -30,11 +30,20 @@ PACKAGE BODY P_MOU_DEL_TARIFF_EXPORT AS
 -- V 0.06      29/04/2016  K.Burton   Code changes to cursors for addition of NIL data row
 --                                    Added SetNilTag procedure
 -- V 0.07      06/05/2016  K.Burton   Adjustment to counts for Standing Data - stop counting it
---                                    for reconciliations because it's not really a tariff 
+--                                    for reconciliations because it's not really a tariff
 -- V 0.08      09/05/2016  K.Burton   Added pre-validation proc P_DEL_VALIDATION_CHECKS - validates
 --                                    tariff table data to check all pre-reqs are met before exporting
 --                                    to file.
 -- V 0.09      12/05/2016  K.Burton   Fixed issue with " rendering in tarifflist tag
+-- V 0.10      13/06/2016  K.Burton   Added filter to exclude crossborder tariff export
+-- V 0.11      23/06/2016  K.Burton   Change to main cursor for seasonal tariffs
+-- V 0.12      04/07/2016  K.Burton   Added new tariff version cursor to accommodate MOSL changes to
+--                                    XML spec for seasonal charges
+-- V 0.13      06/07/2016  K.Burton   Changes to P_DEL_TARIFF_EXPORT_SW from MOSL feedback
+-- V 0.14      13/07/2016  K.Burton   Issue I-292 - additional lookup table checks needed for SW and HD
+-- V 0.15      14/07/2016  K/Burton   Element name correction Assessed Band Charges for Surface Water
+--                                    Draining SWBandCharge (D7452) corrected to Area Charges
+-- V 0.16      25/08/2016  S.Badhan   I-320. If user FINDEL use directory FINEXPORT.
 -----------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------
 -- PROCEDURE SPECIFICATION: Wholesaler Tariff XML Export - MAIN ROUTINE
@@ -47,10 +56,12 @@ PROCEDURE P_DEL_TARIFF_EXPORT_MAIN(no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
                                    return_code IN OUT NUMBER) IS
 
   -- MAIN TARIFF CURSOR
+  -- V 0.12 - Change to remove tariff version related information - this now comes from second cursor
   CURSOR cur_tariff IS
     SELECT MT.TARIFFNAME name,
+           MT.TARIFFCODE_PK code,
+           TO_CHAR (MT.TARIFFEFFECTIVEFROMDATE,'YYYY-MM-DD') effective_from_date,  -- Format changed for V 0.02
            MT.SERVICECOMPONENTTYPE,
-           MTV.TARIFF_VERSION_PK,
            DECODE(MT.SERVICECOMPONENTTYPE,'MPW','Metered Potable Water',
                                           'MNPW','Metered Non-Potable Water',
                                           'UW','Unmeasured Water',
@@ -63,17 +74,26 @@ PROCEDURE P_DEL_TARIFF_EXPORT_MAIN(no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
                                           'MS','Metered Sewerage',
                                           'SCA','Charge Adjustment Sewerage',  -- Added for V 0.02
                                           'WCA','Charge Adjustment Water',    -- Added for V 0.02
-                                          'Not Known') service_component,
-           MT.TARIFFCODE_PK code,
+                                          'Not Known') service_component
+    FROM MOUTRAN.MO_TARIFF MT
+    WHERE MT.TARIFFCODE_PK LIKE '1STW%'    -- V 0.10
+    ORDER BY MT.TARIFFCODE_PK;
+
+  -- V 0.12 - tariff version related data - accommodates seasonal tariffs with multiple versions
+  CURSOR cur_tariff_version (p_tariff_code VARCHAR2) IS
+    SELECT MTV.TARIFF_VERSION_PK,
            TO_CHAR (MTV.TARIFFVEREFFECTIVEFROMDATE,'YYYY-MM-DD') effective_from_date,  -- Format changed for V 0.02
            MTV.STATE
     FROM MOUTRAN.MO_TARIFF MT,
          MOUTRAN.MO_TARIFF_VERSION MTV
     WHERE MT.TARIFFCODE_PK = MTV.TARIFFCODE_PK
-    AND MTV.TARIFFVERSION = (SELECT MAX(TARIFFVERSION) FROM MOUTRAN.MO_TARIFF_VERSION
+    AND (MTV.TARIFFVERSION = (SELECT MAX(TARIFFVERSION) FROM MOUTRAN.MO_TARIFF_VERSION
                              WHERE TARIFFCODE_PK = MT.TARIFFCODE_PK
                              AND TARIFFCOMPONENTTYPE = MT.SERVICECOMPONENTTYPE)
-    ORDER BY MT.SERVICECOMPONENTTYPE;
+         OR MT.SEASONALFLAG = 'Y') -- V 0.11
+    AND MT.TARIFFCODE_PK LIKE '1STW%'    -- V 0.10
+    AND MT.TARIFFCODE_PK = p_tariff_code
+    ORDER BY MT.SERVICECOMPONENTTYPE,MTV.TARIFFVEREFFECTIVEFROMDATE;
 
   l_xmltype XMLTYPE;
   l_filepath VARCHAR2(30) := 'DELEXPORT';
@@ -92,6 +112,10 @@ BEGIN
    g_no_row_err := 0;
    g_no_row_exp := 0;
    g_job.IND_STATUS := 'RUN';
+
+   IF USER = 'FINDEL' THEN
+      l_filepath := 'FINEXPORT';
+   END IF;
 
    -- get job no and start job
    P_MIG_BATCH.FN_STARTJOB(no_batch, no_job, c_module_name,
@@ -122,8 +146,8 @@ BEGIN
     P_MIG_BATCH.FN_UPDATEJOB(no_batch, g_job.NO_INSTANCE, g_job.IND_STATUS);
     return_code := -1;
     RETURN;
-  END IF;  
-  
+  END IF;
+
   g_progress := 'creating empty XML document ';
 
   -- Create an empty XML document
@@ -134,18 +158,18 @@ BEGIN
   g_root_node := dbms_xmldom.makeNode(g_domdoc);
 
   -- Create a new node tarifflist and add it to the root node
-  g_tariff_list_node := dbms_xmldom.appendChild(g_root_node, dbms_xmldom.makeNode(dbms_xmldom.createElement(g_domdoc, g_tariff_list)));-- V 0.09 
-  g_tariff_list_attribute := dbms_xmldom.createAttribute(g_domdoc,g_tariff_list_attr1);-- V 0.09 
-  g_tariff_list_attr_node := dbms_xmldom.appendChild(g_tariff_list_node, dbms_xmldom.makeNode(g_tariff_list_attribute));-- V 0.09 
-  dbms_xmldom.setvalue(g_tariff_list_attribute,g_tariff_list_attr_txt1);-- V 0.09 
+  g_tariff_list_node := dbms_xmldom.appendChild(g_root_node, dbms_xmldom.makeNode(dbms_xmldom.createElement(g_domdoc, g_tariff_list)));-- V 0.09
+  g_tariff_list_attribute := dbms_xmldom.createAttribute(g_domdoc,g_tariff_list_attr1);-- V 0.09
+  g_tariff_list_attr_node := dbms_xmldom.appendChild(g_tariff_list_node, dbms_xmldom.makeNode(g_tariff_list_attribute));-- V 0.09
+  dbms_xmldom.setvalue(g_tariff_list_attribute,g_tariff_list_attr_txt1);-- V 0.09
 
-  g_tariff_list_attribute := dbms_xmldom.createAttribute(g_domdoc,g_tariff_list_attr2);-- V 0.09 
-  g_tariff_list_attr_node := dbms_xmldom.appendChild(g_tariff_list_node, dbms_xmldom.makeNode(g_tariff_list_attribute));-- V 0.09 
-  dbms_xmldom.setvalue(g_tariff_list_attribute,g_tariff_list_attr_txt2);-- V 0.09 
+  g_tariff_list_attribute := dbms_xmldom.createAttribute(g_domdoc,g_tariff_list_attr2);-- V 0.09
+  g_tariff_list_attr_node := dbms_xmldom.appendChild(g_tariff_list_node, dbms_xmldom.makeNode(g_tariff_list_attribute));-- V 0.09
+  dbms_xmldom.setvalue(g_tariff_list_attribute,g_tariff_list_attr_txt2);-- V 0.09
 
-  g_tariff_list_attribute := dbms_xmldom.createAttribute(g_domdoc,g_tariff_list_attr3);-- V 0.09 
-  g_tariff_list_attr_node := dbms_xmldom.appendChild(g_tariff_list_node, dbms_xmldom.makeNode(g_tariff_list_attribute));-- V 0.09 
-  dbms_xmldom.setvalue(g_tariff_list_attribute,g_tariff_list_attr_txt3);-- V 0.09 
+  g_tariff_list_attribute := dbms_xmldom.createAttribute(g_domdoc,g_tariff_list_attr3);-- V 0.09
+  g_tariff_list_attr_node := dbms_xmldom.appendChild(g_tariff_list_node, dbms_xmldom.makeNode(g_tariff_list_attribute));-- V 0.09
+  dbms_xmldom.setvalue(g_tariff_list_attribute,g_tariff_list_attr_txt3);-- V 0.09
 
   FOR t IN cur_tariff
   LOOP
@@ -159,15 +183,15 @@ BEGIN
        g_name_node := CreateXMLTag(g_domdoc,g_tariff_node,g_name,'Standing Data STW');  -- these values are hard coded because Standing Data does not conform -- V 0.04
        g_code_node := CreateXMLTag(g_domdoc,g_tariff_node,g_code,'SD_STW');             -- to "normal" service component structures -- V 0.04
        g_effective_from_node := CreateXMLTag(g_domdoc,g_tariff_node,g_effective_from,t.effective_from_date); -- V 0.04
-       
+
        -- For each tariff we now need the tariffdatalist
        g_tariff_data_list_node := dbms_xmldom.appendChild(g_tariff_node, dbms_xmldom.makeNode(dbms_xmldom.createElement(g_domdoc, g_tariff_data_list)));
        g_tariff_data_node := dbms_xmldom.appendChild(g_tariff_data_list_node, dbms_xmldom.makeNode(dbms_xmldom.createElement(g_domdoc, g_tariff_data)));
 
        -- Each tariffdata element has effectivefrom and state nodes to contain the tariffdata header data
        g_effective_from_node := CreateXMLTag(g_domdoc,g_tariff_data_node,g_effective_from,t.effective_from_date); -- V 0.04
-       g_state_node := CreateXMLTag(g_domdoc,g_tariff_data_node,g_state,t.state); -- V 0.04
-    
+       g_state_node := CreateXMLTag(g_domdoc,g_tariff_data_node,g_state,'Verified'); -- V 0.04 (hard coded state for standing data since this data not in main tariff table
+
        g_charge_element_list_node := dbms_xmldom.appendChild(g_tariff_data_node, dbms_xmldom.makeNode(dbms_xmldom.createElement(g_domdoc, g_charge_element_list)));
 
        P_DEL_TARIFF_EXPORT_SD(no_batch, no_job, return_code);  -- Added for V 0.02
@@ -187,41 +211,46 @@ BEGIN
 
     -- For each tariff we now need the tariffdatalist
     g_tariff_data_list_node := dbms_xmldom.appendChild(g_tariff_node, dbms_xmldom.makeNode(dbms_xmldom.createElement(g_domdoc, g_tariff_data_list)));
-    g_tariff_data_node := dbms_xmldom.appendChild(g_tariff_data_list_node, dbms_xmldom.makeNode(dbms_xmldom.createElement(g_domdoc, g_tariff_data)));
 
-    -- Each tariffdata element has effectivefrom and state nodes to contain the tariffdata header data
-    g_effective_from_node := CreateXMLTag(g_domdoc,g_tariff_data_node,g_effective_from,t.effective_from_date);
-    g_state_node := CreateXMLTag(g_domdoc,g_tariff_data_node,g_state,t.state);
+    -- V 0.12 for each tariff version we need to do the following
+    FOR tv IN cur_tariff_version(t.code)
+    LOOP
+      g_tariff_data_node := dbms_xmldom.appendChild(g_tariff_data_list_node, dbms_xmldom.makeNode(dbms_xmldom.createElement(g_domdoc, g_tariff_data)));
 
-    -- Charge element list - V 0.03
-    g_charge_element_list_node := dbms_xmldom.appendChild(g_tariff_data_node, dbms_xmldom.makeNode(dbms_xmldom.createElement(g_domdoc, g_charge_element_list)));
+      -- Each tariffdata element has effectivefrom and state nodes to contain the tariffdata header data
+      g_effective_from_node := CreateXMLTag(g_domdoc,g_tariff_data_node,g_effective_from,tv.effective_from_date);
+      g_state_node := CreateXMLTag(g_domdoc,g_tariff_data_node,g_state,tv.state);
 
-     -- Make calls to individual service component
-     IF t.SERVICECOMPONENTTYPE = 'MPW' THEN  -- METERED POTABLE WATER
-      P_DEL_TARIFF_EXPORT_MPW(t.TARIFF_VERSION_PK, no_batch, no_job, return_code);
-     ELSIF t.SERVICECOMPONENTTYPE = 'MNPW' THEN  -- METERED NON-POTABLE WATER
-      P_DEL_TARIFF_EXPORT_MNPW(t.TARIFF_VERSION_PK, no_batch, no_job, return_code);
-     ELSIF t.SERVICECOMPONENTTYPE = 'UW' THEN  -- UNMEASURED WATER
-      P_DEL_TARIFF_EXPORT_UW(t.TARIFF_VERSION_PK, no_batch, no_job, return_code);
-     ELSIF t.SERVICECOMPONENTTYPE = 'AS' THEN  -- ASSESSED SEWERAGE
-      P_DEL_TARIFF_EXPORT_AS(t.TARIFF_VERSION_PK, no_batch, no_job, return_code);
-     ELSIF t.SERVICECOMPONENTTYPE = 'US' THEN  -- UNMEASURED SEWERAGE
-      P_DEL_TARIFF_EXPORT_US(t.TARIFF_VERSION_PK, no_batch, no_job, return_code);
-     ELSIF t.SERVICECOMPONENTTYPE = 'HD' THEN  -- HIGHWAY DRAINAGE
-      P_DEL_TARIFF_EXPORT_HD(t.TARIFF_VERSION_PK, no_batch, no_job, return_code);
-     ELSIF t.SERVICECOMPONENTTYPE = 'AW' THEN  -- ASSESSED WATER
-      P_DEL_TARIFF_EXPORT_AW(t.TARIFF_VERSION_PK, no_batch, no_job, return_code);
-     ELSIF t.SERVICECOMPONENTTYPE = 'TE' THEN  -- TRADE EFFLUENT
-      P_DEL_TARIFF_EXPORT_TE(t.TARIFF_VERSION_PK, no_batch, no_job, return_code);
-     ELSIF t.SERVICECOMPONENTTYPE = 'SW' THEN  -- SURFACE WATER DRAINAGE
-      P_DEL_TARIFF_EXPORT_SW(t.TARIFF_VERSION_PK, no_batch, no_job, return_code);
-     ELSIF t.SERVICECOMPONENTTYPE = 'MS' THEN  -- MEASURED SEWERAGE
-      P_DEL_TARIFF_EXPORT_MS(t.TARIFF_VERSION_PK, no_batch, no_job, return_code);
-     ELSIF t.SERVICECOMPONENTTYPE = 'WCA' THEN  -- CHARGE ADJUSTMENT WATER
-      P_DEL_TARIFF_EXPORT_WCA(t.TARIFF_VERSION_PK, no_batch, no_job, return_code);  -- Added for V 0.02
-     ELSIF t.SERVICECOMPONENTTYPE = 'SCA' THEN  -- CHARGE ADJUSTMENT SEWERAGE
-      P_DEL_TARIFF_EXPORT_SCA(t.TARIFF_VERSION_PK, no_batch, no_job, return_code);  -- Added for V 0.02
-     END IF;
+      -- Charge element list - V 0.03
+      g_charge_element_list_node := dbms_xmldom.appendChild(g_tariff_data_node, dbms_xmldom.makeNode(dbms_xmldom.createElement(g_domdoc, g_charge_element_list)));
+
+       -- Make calls to individual service component
+       IF t.SERVICECOMPONENTTYPE = 'MPW' THEN  -- METERED POTABLE WATER
+        P_DEL_TARIFF_EXPORT_MPW(tv.TARIFF_VERSION_PK, no_batch, no_job, return_code);
+       ELSIF t.SERVICECOMPONENTTYPE = 'MNPW' THEN  -- METERED NON-POTABLE WATER
+        P_DEL_TARIFF_EXPORT_MNPW(tv.TARIFF_VERSION_PK, no_batch, no_job, return_code);
+       ELSIF t.SERVICECOMPONENTTYPE = 'UW' THEN  -- UNMEASURED WATER
+        P_DEL_TARIFF_EXPORT_UW(tv.TARIFF_VERSION_PK, no_batch, no_job, return_code);
+       ELSIF t.SERVICECOMPONENTTYPE = 'AS' THEN  -- ASSESSED SEWERAGE
+        P_DEL_TARIFF_EXPORT_AS(tv.TARIFF_VERSION_PK, no_batch, no_job, return_code);
+       ELSIF t.SERVICECOMPONENTTYPE = 'US' THEN  -- UNMEASURED SEWERAGE
+        P_DEL_TARIFF_EXPORT_US(tv.TARIFF_VERSION_PK, no_batch, no_job, return_code);
+       ELSIF t.SERVICECOMPONENTTYPE = 'HD' THEN  -- HIGHWAY DRAINAGE
+        P_DEL_TARIFF_EXPORT_HD(tv.TARIFF_VERSION_PK, no_batch, no_job, return_code);
+       ELSIF t.SERVICECOMPONENTTYPE = 'AW' THEN  -- ASSESSED WATER
+        P_DEL_TARIFF_EXPORT_AW(tv.TARIFF_VERSION_PK, no_batch, no_job, return_code);
+       ELSIF t.SERVICECOMPONENTTYPE = 'TE' THEN  -- TRADE EFFLUENT
+        P_DEL_TARIFF_EXPORT_TE(tv.TARIFF_VERSION_PK, no_batch, no_job, return_code);
+       ELSIF t.SERVICECOMPONENTTYPE = 'SW' THEN  -- SURFACE WATER DRAINAGE
+        P_DEL_TARIFF_EXPORT_SW(tv.TARIFF_VERSION_PK, no_batch, no_job, return_code);
+       ELSIF t.SERVICECOMPONENTTYPE = 'MS' THEN  -- MEASURED SEWERAGE
+        P_DEL_TARIFF_EXPORT_MS(tv.TARIFF_VERSION_PK, no_batch, no_job, return_code);
+       ELSIF t.SERVICECOMPONENTTYPE = 'WCA' THEN  -- CHARGE ADJUSTMENT WATER
+        P_DEL_TARIFF_EXPORT_WCA(tv.TARIFF_VERSION_PK, no_batch, no_job, return_code);  -- Added for V 0.02
+       ELSIF t.SERVICECOMPONENTTYPE = 'SCA' THEN  -- CHARGE ADJUSTMENT SEWERAGE
+        P_DEL_TARIFF_EXPORT_SCA(tv.TARIFF_VERSION_PK, no_batch, no_job, return_code);  -- Added for V 0.02
+       END IF;
+    END LOOP; -- cur_tariff_version
   END LOOP; -- cur_tariff
 
   l_filename := l_filepath || '/TARIFF_EXPORT_SEVERN-W_' || TO_CHAR(SYSDATE,'YYYYMMDDHH24MISS') || '.xml';
@@ -247,7 +276,7 @@ END P_DEL_TARIFF_EXPORT_MAIN;
 -- FUNCTION SPECIFICATION: Wholesaler Tariff XML Export - Pre-export validation checks
 -- AUTHOR         : Kevin Burton
 -- CREATED        : 09/05/2016
--- DESCRIPTION    : Validates if all the pre-req tariff data is present before exporting 
+-- DESCRIPTION    : Validates if all the pre-req tariff data is present before exporting
 --                  to file - otherwise outputs and error
 -----------------------------------------------------------------------------------------
 PROCEDURE P_DEL_VALIDATION_CHECKS (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
@@ -258,7 +287,7 @@ PROCEDURE P_DEL_VALIDATION_CHECKS (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
   l_dailypremusagevol NUMBER;
   l_comband VARCHAR2(16);
   l_count NUMBER;
-  l_ra NUMBER; 
+  l_ra NUMBER;
   l_va NUMBER;
   l_bva NUMBER;
   l_ma NUMBER;
@@ -288,7 +317,7 @@ PROCEDURE P_DEL_VALIDATION_CHECKS (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
   l_zm NUMBER;
   l_robt NUMBER;
   l_bobt NUMBER;
-  
+
   CURSOR tariff_type_cur IS
     SELECT DISTINCT TARIFF_TYPE_PK, TARIFFCODE_PK, TARIFFCOMPONENTTYPE
     FROM (SELECT MTV.TARIFF_VERSION_PK, MTV.TARIFFCODE_PK, MPW.TARIFF_TYPE_PK, MTV.TARIFFCOMPONENTTYPE
@@ -313,7 +342,7 @@ PROCEDURE P_DEL_VALIDATION_CHECKS (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
           FROM MOUTRAN.MO_TARIFF_TYPE_SW SW,
                MOUTRAN.MO_TARIFF_VERSION MTV
           WHERE SW.TARIFF_VERSION_PK = MTV.TARIFF_VERSION_PK
-          AND MTV.TARIFFVERSION = (SELECT MAX(TARIFFVERSION) FROM MOUTRAN.MO_TARIFF_VERSION WHERE TARIFFCODE_PK = MTV.TARIFFCODE_PK)          
+          AND MTV.TARIFFVERSION = (SELECT MAX(TARIFFVERSION) FROM MOUTRAN.MO_TARIFF_VERSION WHERE TARIFFCODE_PK = MTV.TARIFFCODE_PK)
           UNION
           SELECT MTV.TARIFF_VERSION_PK, MTV.TARIFFCODE_PK, HD.TARIFF_TYPE_PK, MTV.TARIFFCOMPONENTTYPE
           FROM MOUTRAN.MO_TARIFF_TYPE_HD HD,
@@ -326,7 +355,7 @@ PROCEDURE P_DEL_VALIDATION_CHECKS (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
                MOUTRAN.MO_TARIFF_VERSION MTV
           WHERE TE.TARIFF_VERSION_PK = MTV.TARIFF_VERSION_PK
           AND MTV.TARIFFVERSION = (SELECT MAX(TARIFFVERSION) FROM MOUTRAN.MO_TARIFF_VERSION WHERE TARIFFCODE_PK = MTV.TARIFFCODE_PK));
-    
+
   CURSOR mpw_cur (p_tariff_type NUMBER) IS
     SELECT TARIFF_MWMFC_PK,
            TARIFF_TYPE_PK,
@@ -336,7 +365,7 @@ PROCEDURE P_DEL_VALIDATION_CHECKS (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
     FROM MOUTRAN.MO_MPW_METER_MWMFC
     WHERE TARIFF_TYPE_PK = p_tariff_type
     ORDER BY LOWERMETERSIZE,UPPERMETERSIZE;
-    
+
   CURSOR mnpw_cur (p_tariff_type NUMBER) IS
     SELECT TARIFF_MWMFC_PK,
            TARIFF_TYPE_PK,
@@ -345,8 +374,8 @@ PROCEDURE P_DEL_VALIDATION_CHECKS (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
            CHARGE
     FROM MOUTRAN.MO_MNPW_METER_MWMFC
     WHERE TARIFF_TYPE_PK = p_tariff_type
-    ORDER BY LOWERMETERSIZE,UPPERMETERSIZE;  
-    
+    ORDER BY LOWERMETERSIZE,UPPERMETERSIZE;
+
   CURSOR ms_cur (p_tariff_type NUMBER) IS
     SELECT TARIFF_MSMFC_PK,
            TARIFF_TYPE_PK,
@@ -355,12 +384,53 @@ PROCEDURE P_DEL_VALIDATION_CHECKS (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
            CHARGE
     FROM MOUTRAN.MO_MS_METER_MSMFC
     WHERE TARIFF_TYPE_PK = p_tariff_type
-    ORDER BY LOWERMETERSIZE,UPPERMETERSIZE;      
+    ORDER BY LOWERMETERSIZE,UPPERMETERSIZE;
+  
+  -- V 0.14  
+  CURSOR sw_cur (p_tariff_type NUMBER) IS
+    SELECT TARIFF_SWMFC_PK,
+           TARIFF_TYPE_PK,
+           LOWERMETERSIZE,
+           UPPERMETERSIZE,
+           CHARGE
+    FROM MOUTRAN.MO_SW_METER_SWMFC
+    WHERE TARIFF_TYPE_PK = p_tariff_type
+    ORDER BY LOWERMETERSIZE,UPPERMETERSIZE;
+
+  CURSOR swab_cur (p_tariff_type NUMBER) IS
+    SELECT TARIFF_AREA_BAND_PK,
+           TARIFF_TYPE_PK,
+           LOWERAREA,
+           UPPERAREA,
+           BAND
+    FROM MOUTRAN.MO_SW_AREA_BAND
+    WHERE TARIFF_TYPE_PK = p_tariff_type
+    ORDER BY LOWERAREA,UPPERAREA;
+    
+  CURSOR hd_cur (p_tariff_type NUMBER) IS
+    SELECT TARIFF_HDMFC_PK,
+           TARIFF_TYPE_PK,
+           LOWERMETERSIZE,
+           UPPERMETERSIZE,
+           CHARGE
+    FROM MOUTRAN.MO_HD_METER_HDMFC
+    WHERE TARIFF_TYPE_PK = p_tariff_type
+    ORDER BY LOWERMETERSIZE,UPPERMETERSIZE;   
+    
+  CURSOR hdab_cur (p_tariff_type NUMBER) IS
+    SELECT TARIFF_AREA_BAND_PK,
+           TARIFF_TYPE_PK,
+           LOWERAREA,
+           UPPERAREA,
+           BAND
+    FROM MOUTRAN.MO_HD_AREA_BAND
+    WHERE TARIFF_TYPE_PK = p_tariff_type
+    ORDER BY LOWERAREA,UPPERAREA;    
 BEGIN
   FOR tt IN tariff_type_cur
   LOOP
     -- check that for all Metered Fixed Charge tariffs the first row of the lookup table
-    -- contains all zero values  
+    -- contains all zero values
     IF tt.TARIFFCOMPONENTTYPE = 'MPW' THEN
       FOR t IN mpw_cur(tt.TARIFF_TYPE_PK)
       LOOP
@@ -371,15 +441,15 @@ BEGIN
             g_job.IND_STATUS := 'ERR';
           END IF;
         END IF;
-      END LOOP; 
-      
-      -- check that for standby capacity charges we have provided mandatory single data 
-      SELECT COUNT(*) 
+      END LOOP;
+
+      -- check that for standby capacity charges we have provided mandatory single data
+      SELECT COUNT(*)
       INTO l_count
       FROM MOUTRAN.MO_MPW_STANDBY_MWCAPCHG
       WHERE TARIFF_TYPE_PK = tt.TARIFF_TYPE_PK;
 
-      IF l_count > 0 THEN    
+      IF l_count > 0 THEN
         SELECT MPWPREMIUMTOLFACTOR,
                MPWDAILYSTANDBYUSAGEVOLCHARGE,
                MPWDAILYPREMIUMUSAGEVOLCHARGE
@@ -388,11 +458,11 @@ BEGIN
              l_dailypremusagevol
         FROM MOUTRAN.MO_TARIFF_TYPE_MPW
         WHERE TARIFF_TYPE_PK = tt.TARIFF_TYPE_PK;
-        
+
         IF l_premtolfactor IS NULL OR l_dailystdbyusagevol IS NULL OR l_dailypremusagevol IS NULL THEN
           P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || ' Standby Usage Charges must be provided if Standby Capacity is not none',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
           return_code := -1;
-          g_job.IND_STATUS := 'ERR';        
+          g_job.IND_STATUS := 'ERR';
         END IF;
       END IF;
     ELSIF tt.TARIFFCOMPONENTTYPE = 'MNPW' THEN
@@ -405,15 +475,15 @@ BEGIN
             g_job.IND_STATUS := 'ERR';
           END IF;
         END IF;
-      END LOOP;  
-      
-      -- check that for standby capacity charges we have provided mandatory single data 
-      SELECT COUNT(*) 
+      END LOOP;
+
+      -- check that for standby capacity charges we have provided mandatory single data
+      SELECT COUNT(*)
       INTO l_count
       FROM MOUTRAN.MO_MNPW_STANDBY_MWCAPCHG
       WHERE TARIFF_TYPE_PK = tt.TARIFF_TYPE_PK;
 
-      IF l_count > 0 THEN    
+      IF l_count > 0 THEN
         SELECT MNPWPREMIUMTOLFACTOR,
                MNPWDAILYSTANDBYUSAGEVOLCHARGE,
                MNPWDAILYPREMIUMUSAGEVOLCHARGE
@@ -422,13 +492,13 @@ BEGIN
              l_dailypremusagevol
         FROM MOUTRAN.MO_TARIFF_TYPE_MNPW
         WHERE TARIFF_TYPE_PK = tt.TARIFF_TYPE_PK;
-      END IF;  
+      END IF;
 
         IF l_premtolfactor IS NULL OR l_dailystdbyusagevol IS NULL OR l_dailypremusagevol IS NULL THEN
           P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || ' Standby Usage Charges must be provided if Standby Capacity is not none',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
           return_code := -1;
-          g_job.IND_STATUS := 'ERR';        
-        END IF;      
+          g_job.IND_STATUS := 'ERR';
+        END IF;
     ELSIF tt.TARIFFCOMPONENTTYPE = 'MS' THEN
       FOR t IN ms_cur(tt.TARIFF_TYPE_PK)
       LOOP
@@ -439,63 +509,110 @@ BEGIN
             g_job.IND_STATUS := 'ERR';
           END IF;
         END IF;
-      END LOOP;      
+      END LOOP;
     ELSIF tt.TARIFFCOMPONENTTYPE = 'SW' THEN
+    -- check that for all metered drainage tariffs the first row of the lookup tables
+    -- contains all zero values
+      FOR t IN sw_cur(tt.TARIFF_TYPE_PK)
+      LOOP
+        IF sw_cur%ROWCOUNT = 1 THEN
+          IF NOT (t.LOWERMETERSIZE = 0 AND t.UPPERMETERSIZE = 0 AND t.CHARGE = 0) THEN
+            P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || ' Meter Fixed Charges data is missing zero value first row',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
+            return_code := -1;
+            g_job.IND_STATUS := 'ERR';
+          END IF;
+        END IF;
+      END LOOP;
+      
       -- check if there are any Area Bands defined for this tariff and if there are we must also have Band Charges
-      -- and community band 
-      SELECT COUNT(*) 
+      -- and community band
+      SELECT COUNT(*)
       INTO l_count
       FROM MOUTRAN.MO_SW_AREA_BAND
       WHERE TARIFF_TYPE_PK = tt.TARIFF_TYPE_PK;
-      
+
       IF l_count > 0 THEN
+        -- check that the first row for area band lookup table contains zero as first entry
+        FOR t IN swab_cur(tt.TARIFF_TYPE_PK)
+        LOOP
+          IF swab_cur%ROWCOUNT = 1 THEN
+            IF NOT t.LOWERAREA = 0 THEN
+              P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || ' SW Area Band data is missing zero value first record',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
+              return_code := -1;
+              g_job.IND_STATUS := 'ERR';
+            END IF;
+          END IF;
+        END LOOP;
+      
         SELECT COUNT(*)
         INTO l_count
         FROM MOUTRAN.MO_SW_BAND_CHARGE
         WHERE TARIFF_TYPE_PK = tt.TARIFF_TYPE_PK;
-        
+
         IF l_count = 0 THEN
-          P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Surface Water Band Charge required if Area Band provided',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
+          P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || ' Surface Water Band Charge required if Area Band provided',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
           return_code := -1;
           g_job.IND_STATUS := 'ERR';
         END IF;
-        
+
         SELECT SWCOMBAND
         INTO l_comband
         FROM MOUTRAN.MO_TARIFF_TYPE_SW
         WHERE TARIFF_TYPE_PK = tt.TARIFF_TYPE_PK;
-        
+
         IF l_comband IS NULL THEN
-          P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Surface Water Community Band required if Area Band provided',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
+          P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || ' Surface Water Community Band required if Area Band provided',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
           return_code := -1;
           g_job.IND_STATUS := 'ERR';
         END IF;
       END IF;
     ELSIF tt.TARIFFCOMPONENTTYPE = 'HD' THEN
-      -- check if there are any Area Bands defined for this tariff and if there are we must also have Band Charges
-      -- and community band 
-      SELECT COUNT(*) 
+    -- check that for all metered drainage tariffs the first row of the lookup tables
+    -- contains all zero values
+      FOR t IN hd_cur(tt.TARIFF_TYPE_PK)
+      LOOP
+        IF hd_cur%ROWCOUNT = 1 THEN
+          IF NOT (t.LOWERMETERSIZE = 0 AND t.UPPERMETERSIZE = 0 AND t.CHARGE = 0) THEN
+            P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || ' Meter Fixed Charges data is missing zero value first row',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
+            return_code := -1;
+            g_job.IND_STATUS := 'ERR';
+          END IF;
+        END IF;
+      END LOOP;      -- check if there are any Area Bands defined for this tariff and if there are we must also have Band Charges
+      -- and community band
+      SELECT COUNT(*)
       INTO l_count
       FROM MOUTRAN.MO_HD_AREA_BAND
       WHERE TARIFF_TYPE_PK = tt.TARIFF_TYPE_PK;
-      
+
       IF l_count > 0 THEN
+        FOR t IN hdab_cur(tt.TARIFF_TYPE_PK)
+        LOOP
+          IF hdab_cur%ROWCOUNT = 1 THEN
+            IF NOT t.LOWERAREA = 0 THEN
+              P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || ' HD Area Band data is missing zero value first record',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
+              return_code := -1;
+              g_job.IND_STATUS := 'ERR';
+            END IF;
+          END IF;
+        END LOOP;
+        
         SELECT COUNT(*)
         INTO l_count
         FROM MOUTRAN.MO_HD_BAND_CHARGE
         WHERE TARIFF_TYPE_PK = tt.TARIFF_TYPE_PK;
-        
+
         IF l_count = 0 THEN
           P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Surface Water Band Charge required if Area Band provided',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
           return_code := -1;
           g_job.IND_STATUS := 'ERR';
         END IF;
-        
+
         SELECT HDCOMBAND
         INTO l_comband
         FROM MOUTRAN.MO_TARIFF_TYPE_HD
         WHERE TARIFF_TYPE_PK = tt.TARIFF_TYPE_PK;
-        
+
         IF l_comband IS NULL THEN
           P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Surface Water Community Band required if Area Band provided',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
           return_code := -1;
@@ -533,7 +650,7 @@ BEGIN
              TECHARGECOMPXM,
              TECHARGECOMPYM,
              TECHARGECOMPZM
-      INTO l_ra, 
+      INTO l_ra,
            l_va,
            l_bva,
            l_ma,
@@ -563,8 +680,8 @@ BEGIN
            l_zm
       FROM MOUTRAN.MO_TARIFF_TYPE_TE
       WHERE TARIFF_TYPE_PK = tt.TARIFF_TYPE_PK;
-            
-      IF (l_ra IS NOT NULL OR 
+
+      IF (l_ra IS NOT NULL OR
           l_va IS NOT NULL OR
           l_bva IS NOT NULL OR
           l_ma IS NOT NULL OR
@@ -574,61 +691,61 @@ BEGIN
           l_xa IS NOT NULL OR
           l_ya IS NOT NULL OR
           l_za IS NOT NULL) THEN
-         
+
         IF l_ra IS NULL THEN
           P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Reception Capacity Charging Component (Ra) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
           return_code := -1;
           g_job.IND_STATUS := 'ERR';
         END IF;
-        
+
         IF l_va IS NULL THEN
           P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Volumetric Capacity Charging Component (Va) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
           return_code := -1;
           g_job.IND_STATUS := 'ERR';
         END IF;
-        
+
         IF l_bva IS NULL THEN
           P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Additional Volumetric Capacity Charging Component (Bva) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
           return_code := -1;
           g_job.IND_STATUS := 'ERR';
         END IF;
-        
+
         IF l_ma IS NULL THEN
           P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Marine Treatment Capacity Charging Component (Ma) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
           return_code := -1;
           g_job.IND_STATUS := 'ERR';
         END IF;
-        
+
         IF l_ba IS NULL THEN
           P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Biological Capacity Charging Component (Ba) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
           return_code := -1;
           g_job.IND_STATUS := 'ERR';
         END IF;
-        
+
         IF l_sa IS NULL THEN
           P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Sludge Capacity Charging Component (Sa) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
           return_code := -1;
           g_job.IND_STATUS := 'ERR';
         END IF;
-        
+
         IF l_aa IS NULL THEN
           P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Ammonia Capacity Charging Component (Aa) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
           return_code := -1;
           g_job.IND_STATUS := 'ERR';
         END IF;
-      END IF; 
+      END IF;
       -- Second check charging components - most of this could be a trigger on MO_TARIFF_TYPE_TE
       -- except the checks on RoBT and BoBT which is more tricky because it's a block tariff table
       SELECT COUNT(*)
       INTO l_robt
       FROM MOUTRAN.MO_TE_BLOCK_ROBT
       WHERE TARIFF_TYPE_PK = tt.TARIFF_TYPE_PK;
-      
+
       SELECT COUNT(*)
       INTO l_bobt
       FROM MOUTRAN.MO_TE_BLOCK_BOBT
-      WHERE TARIFF_TYPE_PK = tt.TARIFF_TYPE_PK;      
-      
+      WHERE TARIFF_TYPE_PK = tt.TARIFF_TYPE_PK;
+
       IF (l_robt > 0 OR
           l_vo IS NOT NULL OR
           l_bvo IS NOT NULL OR
@@ -648,101 +765,101 @@ BEGIN
           l_xm IS NOT NULL OR
           l_ym IS NOT NULL OR
           l_zm IS NOT NULL) THEN
-          
+
           IF l_robt = 0 THEN
             P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Reception Block Tariff Component (RoBT) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
             return_code := -1;
             g_job.IND_STATUS := 'ERR';
           END IF;
-          
+
           IF l_vo IS NULL THEN
             P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Volumetric Charging Component (Vo) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
             return_code := -1;
             g_job.IND_STATUS := 'ERR';
-          END IF;          
+          END IF;
 
           IF l_bvo IS NULL THEN
             P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Additional Volumetric Charging Component (Bvo) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
             return_code := -1;
             g_job.IND_STATUS := 'ERR';
-          END IF; 
-          
+          END IF;
+
           IF l_mo IS NULL THEN
             P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Marine Treatment Charging Component (Mo) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
             return_code := -1;
             g_job.IND_STATUS := 'ERR';
-          END IF; 
-          
+          END IF;
+
           IF l_bobt = 0 THEN
             P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Secondary Treatment Block Tariff Component (BoBT) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
             return_code := -1;
             g_job.IND_STATUS := 'ERR';
-          END IF;  
-          
+          END IF;
+
           IF l_so IS NULL THEN
             P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Sludge Treatment Charging Component (So) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
             return_code := -1;
             g_job.IND_STATUS := 'ERR';
-          END IF;          
-          
+          END IF;
+
           IF l_ao IS NULL THEN
             P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Ammoniacal Nitrogen Charging Component (Ao) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
             return_code := -1;
             g_job.IND_STATUS := 'ERR';
-          END IF;          
-          
+          END IF;
+
           IF l_os IS NULL THEN
             P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Chemical Oxygen Demand Base Value (Os) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
             return_code := -1;
             g_job.IND_STATUS := 'ERR';
-          END IF;    
-          
+          END IF;
+
           IF l_ss IS NULL THEN
             P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Suspended Solids Base Value (Ss) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
             return_code := -1;
             g_job.IND_STATUS := 'ERR';
-          END IF;  
-          
+          END IF;
+
           IF l_as IS NULL THEN
             P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Ammoniacal Nitrogen Base Value (As) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
             return_code := -1;
             g_job.IND_STATUS := 'ERR';
           END IF;
-          
+
           IF l_am IS NULL THEN
             P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Min Val of Ammoniacal Nitrogen content charged (Am) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
             return_code := -1;
             g_job.IND_STATUS := 'ERR';
-          END IF;          
-      END IF;    
+          END IF;
+      END IF;
       -- Third check TE Componentcapacity charges this part could also be a trigger on MO_TARIFF_TYPE_TE table
-      IF (l_ra IS NOT NULL OR 
+      IF (l_ra IS NOT NULL OR
           l_va IS NOT NULL OR
           l_bva IS NOT NULL OR
           l_ma IS NOT NULL OR
           l_ba IS NOT NULL OR
           l_sa IS NOT NULL OR
           l_aa IS NOT NULL) THEN
-          
+
         IF l_xa IS NULL THEN
           P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Trade Effluent Component X Capacity Charging Component (Xa) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
           return_code := -1;
           g_job.IND_STATUS := 'ERR';
-        END IF;  
+        END IF;
 
         IF l_ya IS NULL THEN
           P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Trade Effluent Component Y Capacity Charging Component (Ya) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
           return_code := -1;
           g_job.IND_STATUS := 'ERR';
-        END IF;  
+        END IF;
 
         IF l_za IS NULL THEN
           P_MIG_BATCH.FN_ERRORLOG(no_batch, g_job.NO_INSTANCE, 'E', 'Error: ' || tt.TARIFFCODE_PK || 'Trade Effluent Component Z Capacity Charging Component (Za) required',  g_err.TXT_KEY,  substr(g_err.TXT_DATA || ',' || g_progress,1,100));
           return_code := -1;
           g_job.IND_STATUS := 'ERR';
-        END IF;  
+        END IF;
       END IF;
-    END IF; -- tariff component type 
+    END IF; -- tariff component type
   END LOOP; -- tariff type cur
 END P_DEL_VALIDATION_CHECKS;
 
@@ -837,8 +954,8 @@ END MultiChargeElementHeader;
 -----------------------------------------------------------------------------------------
 PROCEDURE SetNilTag(v_col_val_node VARCHAR2) IS
   l_column_value_node dbms_xmldom.DOMNode;
-  l_column_value_node_text dbms_xmldom.DOMNode;                   
-BEGIN  
+  l_column_value_node_text dbms_xmldom.DOMNode;
+BEGIN
   l_column_value_node := dbms_xmldom.appendChild(g_row_node, dbms_xmldom.makeNode(dbms_xmldom.createElement(g_domdoc, v_col_val_node)));
   g_col_nil_attribute := dbms_xmldom.createAttribute(g_domdoc,g_nil_attr);
   g_col_nil_attr_node := dbms_xmldom.appendChild(l_column_value_node, dbms_xmldom.makeNode(g_col_nil_attribute));
@@ -962,7 +1079,7 @@ BEGIN
 
       MultiChargeElementColVals(v_col_val_node => g_column_1_value,
                                 v_col_val_node_text => mwmfc.column1value);
-      
+
       -- Change for V0.06 - added NIL value to last row
       IF cur_mwmfc%ROWCOUNT < mwmfc.tot_rows THEN
         MultiChargeElementColVals(v_col_val_node => g_column_2_value,
@@ -970,7 +1087,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_2_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_3_value,
                                 v_col_val_node_text => mwmfc.column3value);
     END LOOP;
@@ -1000,7 +1117,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_1_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_2_value,
                                 v_col_val_node_text => mwbt.column2value);
     END LOOP;
@@ -1030,7 +1147,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_1_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_2_value,
                                 v_col_val_node_text => mwcapchg.column2value);
     END LOOP;
@@ -1160,7 +1277,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_2_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_3_value,
                                 v_col_val_node_text => mwmfc.column3value);
     END LOOP;
@@ -1190,7 +1307,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_2_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_2_value,
                                 v_col_val_node_text => mwbt.column2value);
     END LOOP;
@@ -1220,7 +1337,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_1_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_2_value,
                                 v_col_val_node_text => mwcapchg.column2value);
     END LOOP;
@@ -1387,7 +1504,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_2_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_3_value,
                                 v_col_val_node_text => uwpfc.column3value);
     END LOOP;
@@ -1486,7 +1603,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_2_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_3_value,
                                 v_col_val_node_text => asmfc.column3value);
     END LOOP;
@@ -1516,7 +1633,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_1_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_2_value,
                                 v_col_val_node_text => asbandcharge.column2value);
     END LOOP;
@@ -1683,7 +1800,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_2_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_3_value,
                                 v_col_val_node_text => uspfc.column3value);
     END LOOP;
@@ -1821,7 +1938,7 @@ BEGIN
 
       MultiChargeElementColVals(v_col_val_node => g_column_1_value,
                                 v_col_val_node_text => hdareaband.column1value);
-      
+
       -- Change for V0.06 - added NIL value to last row
       IF cur_hdareaband%ROWCOUNT < hdareaband.tot_rows THEN
         MultiChargeElementColVals(v_col_val_node => g_column_2_value,
@@ -1859,7 +1976,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_1_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_2_value,
                                 v_col_val_node_text => hdbandcharge.column2value);
     END LOOP;
@@ -1889,7 +2006,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_1_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_2_value,
                                 v_col_val_node_text => hdbt.column2value);
     END LOOP;
@@ -1922,7 +2039,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_2_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_3_value,
                                 v_col_val_node_text => hdmfc.column3value);
     END LOOP;
@@ -2021,7 +2138,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_2_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_3_value,
                                 v_col_val_node_text => awmfc.column3value);
     END LOOP;
@@ -2351,7 +2468,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_1_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_2_value,
                                 v_col_val_node_text => teband.column2value);
     END LOOP;
@@ -2381,7 +2498,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_1_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_2_value,
                                 v_col_val_node_text => robt.column2value);
     END LOOP;
@@ -2411,7 +2528,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_1_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_2_value,
                                 v_col_val_node_text => bobt.column2value);
     END LOOP;
@@ -2558,7 +2675,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_2_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_3_value,
                                 v_col_val_node_text => swareaband.column3value);
     END LOOP;
@@ -2572,9 +2689,9 @@ BEGIN
     WHERE SWBAND.TARIFF_TYPE_PK = SW.TARIFF_TYPE_PK
     AND SW.TARIFF_VERSION_PK = v_tariff_version;
 
-    MultiChargeElementHeader(v_element_name => 'Assessed Band Charge',
+    MultiChargeElementHeader(v_element_name => 'Area Charges',  --- V 0.15
                              v_applicable => l_applicable,
-                             v_field_name => 'AWBandCharge');
+                             v_field_name => 'SWBandCharge'); -- V 0.13
 
   IF l_applicable = 'true' THEN  -- Added for V 0.02
     FOR swbandcharge IN cur_swbandcharge(v_tariff_version)
@@ -2588,7 +2705,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_1_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_2_value,
                                 v_col_val_node_text => swbandcharge.column2value);
     END LOOP;
@@ -2623,15 +2740,15 @@ BEGIN
     END LOOP;
   END IF;
 
-  -- Surface Water Fixed Meter Charges (D7459 - SWMFC)
+  -- Surface Water Fixed Meter Charges (D7459 - SWMFC) -- V 0.13
     SELECT DECODE(COUNT(*),0,'false','true')  -- Changed for V 0.02
     INTO l_applicable
-    FROM MOUTRAN.MO_SW_AREA_BAND ABAND,
+    FROM MOUTRAN.MO_SW_METER_SWMFC SWMFC,
        MOUTRAN.MO_TARIFF_TYPE_SW SW
-    WHERE ABAND.TARIFF_TYPE_PK = SW.TARIFF_TYPE_PK
+    WHERE SWMFC.TARIFF_TYPE_PK = SW.TARIFF_TYPE_PK
     AND SW.TARIFF_VERSION_PK = v_tariff_version;
 
-    MultiChargeElementHeader(v_element_name => 'Surface Water Fixed Meter Charges',
+    MultiChargeElementHeader(v_element_name => 'Surface Water Meter Fixed Charges',
                              v_applicable => l_applicable,
                              v_field_name => 'SWMFC');
 
@@ -2741,7 +2858,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_2_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_3_value,
                                 v_col_val_node_text => msmfc.column3value);
     END LOOP;
@@ -2771,7 +2888,7 @@ BEGIN
       ELSE
         SetNilTag(v_col_val_node => g_column_1_value);
       END IF;
-      
+
       MultiChargeElementColVals(v_col_val_node => g_column_2_value,
                                 v_col_val_node_text => msbt.column2value);
     END LOOP;

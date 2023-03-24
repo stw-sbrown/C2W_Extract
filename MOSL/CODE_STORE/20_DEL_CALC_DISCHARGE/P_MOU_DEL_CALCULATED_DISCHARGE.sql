@@ -9,7 +9,7 @@ PROCEDURE P_MOU_DEL_CALCULATED_DISCHARGE  (no_batch IN MIG_BATCHSTATUS.NO_BATCH%
 --
 -- FILENAME       : P_MOU_DEL_CALCULATED_DISCHARGE.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5333 $
 --
 -- CREATED        : 12/04/2016
 --
@@ -27,6 +27,8 @@ PROCEDURE P_MOU_DEL_CALCULATED_DISCHARGE  (no_batch IN MIG_BATCHSTATUS.NO_BATCH%
 --                                    now calls P_DEL_UTIL_ARCHIVE_TABLE stored procedure
 -- V 1.01      16/05/2016  K.Burton   Changes to file write logic to accomodate cross border
 --                                    files
+-- V 1.02      25/08/2016  S.Badhan   I-320. If user FINDEL use directory FINEXPORT.
+-- V 1.03      01/09/2016  K.Burton   Updates for splitting STW data into 3 batches
 -----------------------------------------------------------------------------------------
 
   c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_DEL_CALCULATED_DISCHARGE';
@@ -89,6 +91,10 @@ BEGIN
    l_no_row_err := 0;
    l_no_row_exp := 0;
    l_job.IND_STATUS := 'RUN';
+
+   IF USER = 'FINDEL' THEN
+      l_filepath := 'FINEXPORT';
+   END IF;
 
    -- get job no and start job
    P_MIG_BATCH.FN_STARTJOB(no_batch, no_job, c_module_name,
@@ -161,43 +167,6 @@ BEGIN
         -- keep count of records written
         IF l_rec_written THEN
            l_no_row_insert := l_no_row_insert + 1;
-
---          BEGIN
---            l_progress := 'write row export file ';
---
---            UTL_FILE.PUT(fHandle,t_calculated_discharge(i).CALCDISCHARGEID_PK || '|');
---            UTL_FILE.PUT(fHandle,t_calculated_discharge(i).DPID_PK || '|');
---            UTL_FILE.PUT(fHandle,t_calculated_discharge(i).DISCHARGETYPE || '|');
---            UTL_FILE.PUT(fHandle,t_calculated_discharge(i).SUBMISSIONFREQ || '|');
---            UTL_FILE.PUT_LINE(fHandle,t_calculated_discharge(i).TEYEARLYVOLESTIMATE);
---
---          EXCEPTION
---            WHEN OTHERS THEN
---                 l_rec_written := FALSE;
---                 l_error_number := SQLCODE;
---                 l_error_message := SQLERRM;
---
---                 P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', substr(l_error_message,1,100),  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
---                 l_no_row_exp := l_no_row_exp + 1;
---
---                 -- if tolearance limit has een exceeded, set error message and exit out
---                 IF (   l_no_row_exp > l_job.EXP_TOLERANCE
---                     OR l_no_row_err > l_job.ERR_TOLERANCE
---                     OR l_no_row_war > l_job.WAR_TOLERANCE)
---                 THEN
---                     CLOSE cur_calculated_discharge;
---                     l_job.IND_STATUS := 'ERR';
---                     P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', 'Error tolerance level exceeded',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
---                     P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
---                     COMMIT;
---                     return_code := -1;
---                     RETURN;
---                  END IF;
---          END;
---
---          IF l_rec_written THEN
---             l_no_row_written := l_no_row_written + 1;
---          END IF;
         END IF;
     END LOOP;
 
@@ -207,60 +176,36 @@ BEGIN
     CASE w.WHOLESALER_ID 
       WHEN 'ANGLIAN-W' THEN
         l_sql := 'SELECT * FROM DEL_CALC_DISCHARGE_ANW_V';
-        l_filename := 'CALCULATED_DISCHARGE_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_CALC_DISCHARGE_ANW_V;
-        END IF;
       WHEN 'DWRCYMRU-W' THEN
         l_sql := 'SELECT * FROM DEL_CALC_DISCHARGE_WEL_V';
-        l_filename := 'CALCULATED_DISCHARGE_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_CALC_DISCHARGE_WEL_V;
-        END IF;
       WHEN 'SEVERN-W' THEN
         l_sql := 'SELECT * FROM DEL_CALC_DISCHARGE_STW_V';
-        l_filename := 'CALCULATED_DISCHARGE_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_CALC_DISCHARGE_STW_V;
-        END IF;
+      WHEN 'SEVERN-A' THEN
+        l_sql := 'SELECT * FROM DEL_CALC_DISCHARGE_STWA_V';
+      WHEN 'SEVERN-B' THEN
+        l_sql := 'SELECT * FROM DEL_CALC_DISCHARGE_STWB_V';
       WHEN 'THAMES-W' THEN
         l_sql := 'SELECT * FROM DEL_CALC_DISCHARGE_THW_V';
-        l_filename := 'CALCULATED_DISCHARGE_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_CALC_DISCHARGE_THW_V;
-        END IF;
       WHEN 'WESSEX-W' THEN
         l_sql := 'SELECT * FROM DEL_CALC_DISCHARGE_WEW_V';
-        l_filename := 'CALCULATED_DISCHARGE_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_CALC_DISCHARGE_WEW_V;
-        END IF;
       WHEN 'YORKSHIRE-W' THEN
         l_sql := 'SELECT * FROM DEL_CALC_DISCHARGE_YOW_V';
-        l_filename := 'CALCULATED_DISCHARGE_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_CALC_DISCHARGE_YOW_V;
-        END IF;
       WHEN 'UNITED-W' THEN
         l_sql := 'SELECT * FROM DEL_CALC_DISCHARGE_UUW_V';
-        l_filename := 'CALCULATED_DISCHARGE_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_CALC_DISCHARGE_UUW_V;
-        END IF;
       WHEN 'SOUTHSTAFF-W' THEN
         l_sql := 'SELECT * FROM DEL_CALC_DISCHARGE_SSW_V';
-        l_filename := 'CALCULATED_DISCHARGE_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_CALC_DISCHARGE_SSW_V;
-        END IF;
     END CASE;
     IF w.RUN_FLAG = 1 THEN
+      l_filename := 'CALCULATED_DISCHARGE_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
       P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
       l_no_row_written := l_no_row_written + l_rows_written; -- add rows written to total
     ELSE
+      l_sql := 'SELECT COUNT(*) FROM DEL_CALCULATED_DISCHARGE CD, DEL_DISCHARGE_POINT DP, DEL_SUPPLY_POINT SP WHERE CD.DPID_PK = DP.DPID_PK AND DP.SPID_PK = SP.SPID_PK AND SP.WHOLESALERID = :wholesaler';
+      EXECUTE IMMEDIATE l_sql INTO l_count USING w.WHOLESALER_ID;
       l_no_row_dropped_cb := l_no_row_dropped_cb + l_count;
-    END IF;  END LOOP;
-  
+    END IF;
+  END LOOP;
+ 
     IF t_calculated_discharge.COUNT < l_job.NO_COMMIT THEN
        EXIT;
     ELSE
@@ -270,7 +215,6 @@ BEGIN
   END LOOP;
 
   CLOSE cur_calculated_discharge;
---  UTL_FILE.FCLOSE(fHandle);
 
   -- archive the latest batch
   P_DEL_UTIL_ARCHIVE_TABLE(p_tablename => l_tablename,

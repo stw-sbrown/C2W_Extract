@@ -28,11 +28,11 @@ No merging in Git.
 
 6. Import SVN Trunk REV 4047 (FIN branch point)
 7. Tag Git Main as main_svn_trunk_rev4047
---HERE
-8. Create Git Branch FIN from current Git Main
+8. Create Git Branch FIN from current Git Main (done from GitHub)
 
 9. Import SVN Branch FIN REV 5391 (FIN_Build01)
 10. Create Git Tag FIN_Build01
+--HERE
 
 11. Import SVN Branch FIN REV 6458 (tip)
 12. Create Git Tag FIN_SVN_TIP

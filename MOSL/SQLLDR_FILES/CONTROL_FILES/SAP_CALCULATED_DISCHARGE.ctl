@@ -1,0 +1,13 @@
+--
+-- Subversion $Revision: 5201 $	
+--
+LOAD data into table SAP_CALCULATED_DISCHARGE
+fields terminated by "|" TRAILING NULLCOLS
+(
+DPID_PK,
+CALCDISCHARGEID_PK,
+DISCHARGETYPE,
+SUBMISSIONFREQ,
+TEYEARLYVOLESTIMATE,
+OWC                  CONSTANT 'SEVERN'
+)

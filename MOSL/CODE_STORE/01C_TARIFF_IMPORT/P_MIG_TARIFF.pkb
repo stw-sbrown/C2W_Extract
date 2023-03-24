@@ -10,7 +10,7 @@ PROCEDURE P_MOU_TRAN_TARIFF_RUN  AS
 --
 -- FILENAME       : P_MIG_TARIFF.pks
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5194 $
 --
 -- CREATED        : 19-Mar-2016
 --
@@ -34,6 +34,10 @@ PROCEDURE P_MOU_TRAN_TARIFF_RUN  AS
 --                                                - BAND_CHARGE is now also called STANDBY_BLOCK since this matches the MOSL spec naming
 --                                                convention
 -- V 0.06      12/05/2016          K.Burton       Added update statement to replace all £ symbols in tariff names with GBP
+-- V 0.07       24/06/2016          K.Burton       Changed APPLICABLESERVICECOMPONENT to SEASONALFLAG for MO_TARIFF for multi-version seasonal tariffs
+-- V 0.08      15/07/2016          L.Smith        I-304 Count STW and Cross Border Tariffs 
+-- V 0.09      19/07/2016          L.Smith        I-304 Remove schema from table name
+-- V 0.10      25/07/2016          D.Cheung       Default initial batch run to 100
 ----------------------------------------------------------------------------------------
 
 l_error_number                  VARCHAR2(255);
@@ -51,7 +55,7 @@ BEGIN
   return_code   := 0;
   l_NO_INSTANCE :=0;
 
-  SELECT NVL(MAX(no_batch),0) INTO l_batch_no FROM MIG_BATCHSTATUS;
+  SELECT GREATEST(NVL(MAX(no_batch),0),99) INTO l_batch_no FROM MIG_BATCHSTATUS;
 
   l_batch_no := l_batch_no+1;
 
@@ -95,15 +99,15 @@ BEGIN
     WHERE NO_BATCH   = l_batch_no;
   END IF;
 
--- TEMP REMOVE TE TARIFFs
---  IF (return_code =0) THEN
---    p_mig_tariff.p_mou_tran_tariff_te ( l_batch_no,15, return_code );
---    --P_MIG_BATCH.FN_UPDATEBATCH;
---    UPDATE MIG_BATCHSTATUS
---    SET BATCH_STATUS = 'END',
---      ts_update      = CURRENT_TIMESTAMP
---    WHERE NO_BATCH   = l_batch_no;
---  END IF;
+
+  IF (return_code =0) THEN
+    p_mig_tariff.p_mou_tran_tariff_te ( l_batch_no,15, return_code );
+    --P_MIG_BATCH.FN_UPDATEBATCH;
+    UPDATE MIG_BATCHSTATUS
+    SET BATCH_STATUS = 'END',
+      ts_update      = CURRENT_TIMESTAMP
+    WHERE NO_BATCH   = l_batch_no;
+  END IF;
 
   IF (RETURN_CODE =0) THEN
     p_mig_tariff.p_mou_tran_tariff_us ( l_batch_no, 16,return_code );
@@ -154,31 +158,7 @@ BEGIN
       'TWA',
       'TSA'
     );
-
-  DELETE FROM LU_TARIFF;
-
-  INSERT
-  INTO LU_TARIFF
-    (
-      TARIFFCODE_PK,
-      TARIFFEFFECTIVEFROMDATE,
-      TARIFF_EFFECTIVE_TO_DATE,
-      TARIFFNAME,
-      TARIFFSTATUS,
-      TARIFFLEGACYEFFECTIVEFROMDATE,
-      TARIFFAUTHCODE,
-      SERVICECOMPONENTTYPE
-    )
-  SELECT TARIFFCODE_PK,
-    TARIFFEFFECTIVEFROMDATE,
-    NULL,
-    TARIFFNAME,
-    TARIFFSTATUS ,
-    NULL,
-    TARIFFAUTHCODE ,
-    SERVICECOMPONENTTYPE
-  FROM MO_TARIFF ;
-  
+ commit;
   -- remove and £ symbols from tariff names as these cause MOSL display problems
   -- replace with GBP - V 0.06 
   UPDATE MO_TARIFF
@@ -232,6 +212,8 @@ PROCEDURE P_MOU_TRAN_TARIFF_AS(
   l_db_count_before_insert NUMBER                :=0;
   l_db_count_after_insert  NUMBER                :=0;
   l_db_rows_inserted       NUMBER                :=0;
+  l_db_rows_stw_inserted   NUMBER                :=0;
+  l_db_rows_cb_inserted    NUMBER                :=0;
   c_module_name            CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_TARIFF_AS';
   c_company_cd             CONSTANT VARCHAR2(4)  := 'STW1';
   l_error_number           VARCHAR2(255);
@@ -269,9 +251,9 @@ BEGIN
     RETURN;
   END IF;
 
-  SELECT COUNT(TARIFFCODE_PK)
-  INTO l_db_count_before_insert
-  FROM MO_TARIFF;
+--  SELECT COUNT(TARIFFCODE_PK)
+--  INTO l_db_count_before_insert
+--  FROM MO_TARIFF;
 
   l_serv_comp := 'AS';
 
@@ -334,7 +316,7 @@ BEGIN
             TARIFFEFFECTIVEFROMDATE,
             TARIFFSTATUS,
             TARIFFLEGACYEFFECTIVEFROMDATE,
-            APPLICABLESERVICECOMPONENT,
+            SEASONALFLAG, -- V 0.07
             TARIFFAUTHCODE,
             --VACANCYCHARGINGMETHODWATER,/* DB patch 15 fix*/
             --VACANCYCHARGINGMETHODSEWERAGE,/* DB patch 15 fix*/
@@ -349,7 +331,7 @@ BEGIN
             to_date(r.TARIFFEFFECTIVEFROMDATE,'DD/MM/YYYY'),
             upper(r.TariffStatus), -- issue 28 fix
             to_date(r.TARIFFLEGACYEFFECTIVEFROMDATE,'DD/MM/YYYY'),
-            l_serv_comp,
+            'N',
             r.Tariffauthorisationcode,
             --r.VACANCYCHARGIGMETHODWATER,
             --r.VACANCYCHARGINGMETHODSEWERAGE,
@@ -475,7 +457,8 @@ BEGIN
         P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
         P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2395, l_tariff_count, 'Distinct AS tariffs read during Transform');
         P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2405, l_tariff_dropped, 'Distinct AS tariffs dropped during Transform');
-        P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2415, l_db_rows_inserted, 'Distinct AS tariffs written to MO_TARIFFs during Transform');
+        P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2415, NVL(l_db_rows_stw_inserted,0), 'Distinct AS (STW) tariffs written to MO_TARIFFs during Transform');
+        P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2705, NVL(l_db_rows_cb_inserted,0), 'Distinct AS (CB) tariffs written to MO_TARIFFs during Transform');
         COMMIT;
         return_code := -1;
         RETURN;
@@ -486,15 +469,50 @@ BEGIN
   END LOOP;
   
   l_progress := 'Writing Counts';
-  SELECT COUNT(TARIFFCODE_PK) INTO l_db_count_after_insert FROM MO_TARIFF;
-  
-  l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
+--  SELECT COUNT(TARIFFCODE_PK) INTO l_db_count_after_insert FROM MO_TARIFF;
+--  l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
+BEGIN
+SELECT SUM(stw_count)          stw_count,
+       SUM(cross_border_count) cross_border_count
+  INTO l_db_rows_stw_inserted,
+       l_db_rows_cb_inserted
+  FROM (SELECT MT.TARIFFCODE_PK,
+               CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     1
+                  ELSE
+                     0
+                END AS STW_Count,
+                CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     0
+                  ELSE
+                     1
+                END AS Cross_Border_Count
+        FROM MO_TARIFF MT
+        JOIN MO_TARIFF_VERSION MTV
+          ON MT.TARIFFCODE_PK = MTV.TARIFFCODE_PK
+       WHERE MT.SERVICECOMPONENTTYPE = 'AS'
+         AND (MTV.TARIFFVERSION = (SELECT MAX(TARIFFVERSION) 
+                                     FROM MO_TARIFF_VERSION
+                                    WHERE TARIFFCODE_PK = MT.TARIFFCODE_PK
+                                      AND TARIFFCOMPONENTTYPE = MT.SERVICECOMPONENTTYPE)
+                                       OR MT.SEASONALFLAG = 'Y')
+);
+l_db_rows_inserted := l_db_rows_stw_inserted + l_db_rows_cb_inserted;
+EXCEPTION
+   WHEN NO_DATA_FOUND THEN
+      l_db_rows_stw_inserted := 0;
+      l_db_rows_cb_inserted := 0;
+      l_db_rows_inserted := 0;
+END;
 
   --l_tariff_dropped :=   l_tariff_count - l_db_rows_inserted;
   --  the recon key numbers used will be specific to each procedure
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2395, l_tariff_count, 'Distinct AS tariffs read during Transform');
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2405, l_tariff_dropped, 'Distinct AS tariffs dropped during Transform');
-  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2415, l_db_rows_inserted, 'Distinct AS tariffs written to MO_TARIFFs during Transform');
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2415, NVL(l_db_rows_stw_inserted,0), 'Distinct AS (STW) tariffs written to MO_TARIFFs during Transform');
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2705, NVL(l_db_rows_cb_inserted,0), 'Distinct AS (CB) tariffs written to MO_TARIFFs during Transform'); 
 
   IF l_tariff_count  <> l_db_rows_inserted+l_tariff_dropped THEN
     l_job.IND_STATUS := 'ERR';
@@ -561,6 +579,8 @@ l_tariff_dropped number :=0;
 l_db_count_before_insert number :=0;
 l_db_count_after_insert number :=0;
 l_db_rows_inserted  number :=0;
+l_db_rows_stw_inserted   NUMBER                :=0;
+l_db_rows_cb_inserted    NUMBER                :=0;
 c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_TARIFF_AW';
   c_company_cd                  CONSTANT VARCHAR2(4) := 'STW1';
   l_error_number                VARCHAR2(255);
@@ -611,7 +631,7 @@ BEGIN
       RETURN;
    END IF;
 
- select count(TARIFFCODE_PK) into l_db_count_before_insert from MO_TARIFF;
+-- select count(TARIFFCODE_PK) into l_db_count_before_insert from MO_TARIFF;
 l_serv_comp := 'AW';
 -- xml file reading and storing the data into xmlClob_full_file
 xmlFile := UTL_FILE.FOPEN ('FILES', 'TARIFF_AW_XML.xml', 'R');
@@ -676,7 +696,7 @@ insert into MO_TARIFF (TARIFFCODE_PK,
 TARIFFEFFECTIVEFROMDATE,
 TARIFFSTATUS,
 TARIFFLEGACYEFFECTIVEFROMDATE,
-APPLICABLESERVICECOMPONENT,
+SEASONALFLAG, -- V 0.07
 TARIFFAUTHCODE,
 --VACANCYCHARGINGMETHODWATER,/* DB patch 15 fix*/
 --VACANCYCHARGINGMETHODSEWERAGE,/* DB patch 15 fix*/
@@ -689,7 +709,7 @@ VALUES
 to_date(r.TARIFFEFFECTIVEFROMDATE,'DD/MM/YYYY'),
 upper(r.TariffStatus), -- issue 28 fix
 to_date(r.TARIFFLEGACYEFFECTIVEFROMDATE,'DD/MM/YYYY'),
-l_serv_comp,
+'N',
 r.Tariffauthorisationcode,
 --r.VACANCYCHARGIGMETHODWATER,
 --r.VACANCYCHARGINGMETHODSEWERAGE,
@@ -721,7 +741,7 @@ trim(r.tar_ver_tariffcode),--TARIFFCODE_PK
 l_tariff_ver+1,--TARIFFVERSION
 to_date(r.TARIFFVEREFFECTIVEFROMDATE,'DD/MM/YYYY'),--TARIFFVEREFFECTIVEFROMDATE
 upper(r.tarver_TariffStatus),--TARIFFSTATUS-- issue 28 fix
-L_SERV_COMP,--APPLICABLESERVICECOMPONENT
+L_SERV_COMP,
 --nvl(r.Default_Return_to_Sewer,100),--DEFAULTRETURNTOSEWER
 l_serv_comp,--TARIFFCOMPONENTTYPE
 NULL,
@@ -807,7 +827,8 @@ end if;
                  P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', 'Error tolerance level exceeded',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2393, l_tariff_count,    'Distinct AW tariffs read during Transform');
                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2403, l_tariff_dropped,    'Distinct AW tariffs dropped during Transform');
-                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2413, l_db_rows_inserted,  'Distinct AW tariffs written to MO_TARIFFs during Transform');
+                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2413, NVL(l_db_rows_stw_inserted,0),  'Distinct AW (STW) tariffs written to MO_TARIFFs during Transform');
+                 P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2703, NVL(l_db_rows_cb_inserted,0),  'Distinct AW (CB) tariffs written to MO_TARIFFs during Transform');
 
                  P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
                  COMMIT;
@@ -822,16 +843,51 @@ end if;
 
 
 l_progress := 'Writing Counts';
-select count(TARIFFCODE_PK) into l_db_count_after_insert from MO_TARIFF;
-l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
-
+--select count(TARIFFCODE_PK) into l_db_count_after_insert from MO_TARIFF;
+--l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
+BEGIN
+SELECT SUM(stw_count)          stw_count,
+       SUM(cross_border_count) cross_border_count
+  INTO l_db_rows_stw_inserted,
+       l_db_rows_cb_inserted
+  FROM (SELECT MT.TARIFFCODE_PK,
+               CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     1
+                  ELSE
+                     0
+                END AS STW_Count,
+                CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     0
+                  ELSE
+                     1
+                END AS Cross_Border_Count
+        FROM MO_TARIFF MT
+        JOIN MO_TARIFF_VERSION MTV
+          ON MT.TARIFFCODE_PK = MTV.TARIFFCODE_PK
+       WHERE MT.SERVICECOMPONENTTYPE = 'AW'
+         AND (MTV.TARIFFVERSION = (SELECT MAX(TARIFFVERSION) 
+                                     FROM MO_TARIFF_VERSION
+                                    WHERE TARIFFCODE_PK = MT.TARIFFCODE_PK
+                                      AND TARIFFCOMPONENTTYPE = MT.SERVICECOMPONENTTYPE)
+                                       OR MT.SEASONALFLAG = 'Y')
+);
+l_db_rows_inserted := l_db_rows_stw_inserted + l_db_rows_cb_inserted;
+EXCEPTION
+   WHEN NO_DATA_FOUND THEN
+      l_db_rows_stw_inserted := 0;
+      l_db_rows_cb_inserted := 0;
+      l_db_rows_inserted := 0;
+END;
 
   --  the recon key numbers used will be specific to each procedure
 
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2393, l_tariff_count,    'Distinct AW tariffs read during Transform');
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2403, l_tariff_dropped,    'Distinct AW tariffs dropped during Transform');
-  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2413, l_db_rows_inserted,  'Distinct AW tariffs written to MO_TARIFFs during Transform');
-
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2413, NVL(l_db_rows_stw_inserted,0),  'Distinct AW (STW) tariffs written to MO_TARIFFs during Transform');
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2703, NVL(l_db_rows_cb_inserted,0),  'Distinct AW (CB) tariffs written to MO_TARIFFs during Transform');
+                 
 IF l_tariff_count <> l_db_rows_inserted+l_tariff_dropped THEN
      l_job.IND_STATUS := 'ERR';
      P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'X', 'Reconciliation counts do not match',  l_tariff_count || ',' || l_db_rows_inserted, l_err.TXT_DATA || ',' || l_progress);
@@ -890,6 +946,8 @@ PROCEDURE P_MOU_TRAN_TARIFF_MPW(
   -- V 0.05      09/05/2016          K.Burton        Correction to P_MOU_TRAN_TARIFF_MPW to swap BLOCK and BAND_CHARGE table data
   --                                                 - BAND_CHARGE is now also called STANDBY_BLOCK since this matches the MOSL spec naming
   --                                                 convention
+  -- V 0.07      24/06/2016          K.Burton        Added code for seasonal tariffs with multiple versions
+  -- V 0.08      12/07/2016          D.Cheung        I-290 - Change to allow INACTIVE
   -----------------------------------------------------------------------------------------
   l_tariff_ver NUMBER;
   l_serv_comp  VARCHAR2(5);
@@ -904,6 +962,8 @@ PROCEDURE P_MOU_TRAN_TARIFF_MPW(
   l_db_count_before_insert NUMBER                :=0;
   l_db_count_after_insert  NUMBER                :=0;
   l_db_rows_inserted       NUMBER                :=0;
+  l_db_rows_stw_inserted   NUMBER                :=0;
+  l_db_rows_cb_inserted    NUMBER                :=0;
   c_module_name            CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_TARIFF_MPW';
   c_company_cd             CONSTANT VARCHAR2(4)  := 'STW1';
   l_error_number           VARCHAR2(255);
@@ -918,6 +978,9 @@ PROCEDURE P_MOU_TRAN_TARIFF_MPW(
   l_no_row_err MIG_JOBSTATUS.ERR_TOLERANCE%TYPE;
   l_no_row_exp MIG_JOBSTATUS.EXP_TOLERANCE%TYPE;
   l_rec_written BOOLEAN;
+  
+  l_prev_tariff VARCHAR2(100);  -- V 0.06 
+  l_tariff_ver_count NUMBER;   -- V 0.06 
 BEGIN
   l_progress        := 'Start';
   l_err.TXT_DATA    := c_module_name;
@@ -931,6 +994,7 @@ BEGIN
   l_no_row_exp      := 0;
   l_job.IND_STATUS  := 'RUN';
   
+  l_prev_tariff := 'DUMMY'; -- V 0.06 
   -- get job no and start job
   P_MIG_BATCH.FN_STARTJOB(no_batch, no_job, c_module_name, l_job.NO_INSTANCE, l_job.ERR_TOLERANCE, l_job.EXP_TOLERANCE, l_job.WAR_TOLERANCE, l_job.NO_COMMIT, l_job.NO_STREAM, l_job.NO_RANGE_MIN, l_job.NO_RANGE_MAX, l_job.IND_STATUS);
   
@@ -941,7 +1005,7 @@ BEGIN
     RETURN;
   END IF;
 
-  SELECT COUNT(TARIFFCODE_PK) INTO L_DB_COUNT_BEFORE_INSERT FROM MO_TARIFF;
+--  SELECT COUNT(TARIFFCODE_PK) INTO L_DB_COUNT_BEFORE_INSERT FROM MO_TARIFF;
   l_serv_comp := 'MPW';
 
   -- xml file reading and storing the data into xmlClob_full_file
@@ -977,11 +1041,11 @@ BEGIN
           ,ExtractValue(Value(p),'/Row/TARIFF_Version/TariffStatus/text()') as tarver_TariffStatus
 
           ,ExtractValue(Value(p),'/Row/MO_TARIFF_TYPE_MPW/TariffCode/text()') as MO_TARIFF_TYPE_MPW_TariffCode
-          ,ExtractValue(Value(p),'/Row/MO_TARIFF_TYPE_MPW/UWFIXEDCHARGE/text()') as MPWSUPPLYPOINTFIXEDCHARGE
-          ,ExtractValue(Value(p),'/Row/MO_TARIFF_TYPE_MPW/UWRVPOUNDAGE/text()') as MPWPREMIUMTOLFACTOR
-          ,ExtractValue(Value(p),'/Row/MO_TARIFF_TYPE_MPW/UWRVTHRESHOLD/text()') as MPWDAILYSTANDBYUSAGEVOLCHARGE
-          ,ExtractValue(Value(p),'/Row/MO_TARIFF_TYPE_MPW/UWRVMAXIMUMCHARGE/text()') as MPWDAILYPREMIUMUSAGEVOLCHARGE
-          ,ExtractValue(Value(p),'/Row/MO_TARIFF_TYPE_MPW/UWRVMinimumCharge/text()') as MPWMAXIMUMDEMANDTARIFF
+          ,ExtractValue(Value(p),'/Row/MO_TARIFF_TYPE_MPW/MPWSUPPLYPOINTFIXEDCHARGE/text()') as MPWSUPPLYPOINTFIXEDCHARGE
+          ,ExtractValue(Value(p),'/Row/MO_TARIFF_TYPE_MPW/MPWPREMIUMTOLFACTOR/text()') as MPWPREMIUMTOLFACTOR
+          ,ExtractValue(Value(p),'/Row/MO_TARIFF_TYPE_MPW/MPWDAILYSTANDBYUSAGEVOLCHARGE/text()') as MPWDAILYSTANDBYUSAGEVOLCHARGE
+          ,ExtractValue(Value(p),'/Row/MO_TARIFF_TYPE_MPW/MPWDAILYPREMIUMUSAGEVOLCHARGE/text()') as MPWDAILYPREMIUMUSAGEVOLCHARGE
+          ,ExtractValue(Value(p),'/Row/MO_TARIFF_TYPE_MPW/MPWMAXIMUMDEMANDTARIFF/text()') as MPWMAXIMUMDEMANDTARIFF
 
 --          ,ExtractValue(Value(p),'/Row/MO_BLOCK/TariffCode/text()') as MO_BLOCK_TariffCode -- V 0.05
 --          ,ExtractValue(Value(p),'/Row/MO_BLOCK/RESERVATIONVOLUME/text()') as MO_BLOCK_RESERVATIONVOLUME -- V 0.05
@@ -1006,17 +1070,22 @@ BEGIN
     FROM   TABLE(XMLSequence(Extract(x,'/TARIFF_MPW/Row'))) p
     ) LOOP
 
-IF r.TariffStatus = 'Inactive' THEN
-  r.TariffStatus := 'Active';
-END IF;
+--IF r.TariffStatus = 'Inactive' THEN
+--r.TariffStatus := 'Active';
+--END IF;
 l_progress    := 'processing TE xml parse';
 l_tariff_code := 'Tariff code '||r.TariffCode||r.tar_ver_tariffcode;
 
 BEGIN
-  
   IF r.TariffCode  IS NOT NULL THEN
-    l_progress     := 'processing MO_TARIFF';
     l_tariff_count := l_tariff_count+1;
+  END IF;
+  
+  IF r.TariffCode  IS NOT NULL AND r.TariffCode <> l_prev_tariff THEN
+    l_progress     := 'processing MO_TARIFF';
+--    l_tariff_count := l_tariff_count+1;
+    l_prev_tariff := r.TariffCode; -- V 0.06 
+    l_tariff_ver_count := 0; -- V 0.06
     INSERT
     INTO MO_TARIFF
       (
@@ -1024,7 +1093,7 @@ BEGIN
         TARIFFEFFECTIVEFROMDATE,
         TARIFFSTATUS,
         TARIFFLEGACYEFFECTIVEFROMDATE,
-        APPLICABLESERVICECOMPONENT,
+        SEASONALFLAG,-- V 0.07
         TARIFFAUTHCODE,
         --VACANCYCHARGINGMETHODWATER,/* DB patch 15 fix*/
         --VACANCYCHARGINGMETHODSEWERAGE,/* DB patch 15 fix*/
@@ -1039,7 +1108,7 @@ BEGIN
         to_date(r.TARIFFEFFECTIVEFROMDATE,'DD/MM/YYYY'),
         upper(r.TariffStatus), -- issue 28 fix
         to_date(r.TARIFFLEGACYEFFECTIVEFROMDATE,'DD/MM/YYYY'),
-        l_serv_comp,
+        'N',
         r.Tariffauthorisationcode,
         --r.VACANCYCHARGIGMETHODWATER,
         --r.VACANCYCHARGINGMETHODSEWERAGE,
@@ -1049,7 +1118,16 @@ BEGIN
         trim(r.TariffName)
       );
   END IF;
-
+  
+  -- V 0.07
+  IF r.TariffCode = l_prev_tariff THEN  --count number of times this tariff code has been found
+    l_tariff_ver_count := l_tariff_ver_count + 1;
+    IF l_tariff_ver_count > 1 THEN -- if more than once assume this is 'seasonal' tariff - ie has more than one version to include in export
+      UPDATE MO_TARIFF
+      SET SEASONALFLAG = 'Y'
+      WHERE TARIFFCODE_PK = r.TariffCode;
+    END IF;
+  END IF;
 
   IF r.tar_ver_tariffcode IS NOT NULL THEN
     l_progress            := 'processing MO_TARIFF_VERSION';
@@ -1194,7 +1272,8 @@ BEGIN
                  P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', 'Error tolerance level exceeded',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2397, l_tariff_count,    'Distinct MPW tariffs read during Transform');
                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2407, l_tariff_dropped,    'Distinct MPW tariffs dropped during Transform');
-                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2417, l_db_rows_inserted,  'Distinct MPW tariffs written to MO_TARIFFs during Transform');
+                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2417, NVL(l_db_rows_stw_inserted,0),  'Distinct MPW (STW) tariffs written to MO_TARIFFs during Transform');
+                P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2707, NVL(l_db_rows_cb_inserted,0),  'Distinct MPW (CB) tariffs written to MO_TARIFFs during Transform');
 
                  P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
                  COMMIT;
@@ -1208,14 +1287,49 @@ BEGIN
   END LOOP;
 
   l_progress := 'Writing Counts';
-  SELECT COUNT(TARIFFCODE_PK) INTO l_db_count_after_insert FROM MO_TARIFF;
-  l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
-
+--  SELECT COUNT(TARIFFCODE_PK) INTO l_db_count_after_insert FROM MO_TARIFF;
+--  l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
+BEGIN
+SELECT SUM(stw_count)          stw_count,
+       SUM(cross_border_count) cross_border_count
+  INTO l_db_rows_stw_inserted,
+       l_db_rows_cb_inserted
+  FROM (SELECT MT.TARIFFCODE_PK,
+               CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     1
+                  ELSE
+                     0
+                END AS STW_Count,
+                CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     0
+                  ELSE
+                     1
+                END AS Cross_Border_Count
+        FROM MO_TARIFF MT
+        JOIN MO_TARIFF_VERSION MTV
+          ON MT.TARIFFCODE_PK = MTV.TARIFFCODE_PK
+       WHERE MT.SERVICECOMPONENTTYPE = 'MPW'
+         AND (MTV.TARIFFVERSION = (SELECT MAX(TARIFFVERSION) 
+                                     FROM MO_TARIFF_VERSION
+                                    WHERE TARIFFCODE_PK = MT.TARIFFCODE_PK
+                                      AND TARIFFCOMPONENTTYPE = MT.SERVICECOMPONENTTYPE)
+                                       OR MT.SEASONALFLAG = 'Y')
+);
+l_db_rows_inserted := l_db_rows_stw_inserted + l_db_rows_cb_inserted;
+EXCEPTION
+   WHEN NO_DATA_FOUND THEN
+      l_db_rows_stw_inserted := 0;
+      l_db_rows_cb_inserted := 0;
+      l_db_rows_inserted := 0;
+END;
   --  the recon key numbers used will be specific to each procedure
 
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2397, l_tariff_count,    'Distinct MPW tariffs read during Transform');
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2407, l_tariff_dropped,    'Distinct MPW tariffs dropped during Transform');
-  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2417, l_db_rows_inserted,  'Distinct MPW tariffs written to MO_TARIFFs during Transform');
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2417, NVL(l_db_rows_stw_inserted,0),  'Distinct MPW (STW) tariffs written to MO_TARIFFs during Transform');
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2707, NVL(l_db_rows_cb_inserted,0),  'Distinct MPW (CB) tariffs written to MO_TARIFFs during Transform');
 
    IF l_tariff_count <> l_db_rows_inserted+l_tariff_dropped THEN
        l_job.IND_STATUS := 'ERR';
@@ -1285,6 +1399,8 @@ l_tariff_dropped number :=0;
 l_db_count_before_insert number :=0;
 l_db_count_after_insert number :=0;
 l_db_rows_inserted  number :=0;
+l_db_rows_stw_inserted   NUMBER                :=0;
+l_db_rows_cb_inserted    NUMBER                :=0;
 c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_TARIFF_MS';
   c_company_cd                  CONSTANT VARCHAR2(4) := 'STW1';
   l_error_number                VARCHAR2(255);
@@ -1335,7 +1451,7 @@ BEGIN
       RETURN;
    END IF;
 
- select count(TARIFFCODE_PK) into l_db_count_before_insert from MO_TARIFF;
+-- select count(TARIFFCODE_PK) into l_db_count_before_insert from MO_TARIFF;
 l_serv_comp := 'MS';
 -- xml file reading and storing the data into xmlClob_full_file
 xmlFile := UTL_FILE.FOPEN ('FILES', 'TARIFF_MS_XML.xml', 'R');
@@ -1396,7 +1512,7 @@ insert into MO_TARIFF (TARIFFCODE_PK,
 TARIFFEFFECTIVEFROMDATE,
 TARIFFSTATUS,
 TARIFFLEGACYEFFECTIVEFROMDATE,
-APPLICABLESERVICECOMPONENT,
+SEASONALFLAG,-- V 0.07
 TARIFFAUTHCODE,
 --VACANCYCHARGINGMETHODWATER,/* DB patch 15 fix*/
 --VACANCYCHARGINGMETHODSEWERAGE,/* DB patch 15 fix*/
@@ -1409,7 +1525,7 @@ VALUES
 to_date(r.TARIFFEFFECTIVEFROMDATE,'DD/MM/YYYY'),
 upper(r.TariffStatus), -- issue 28 fix
 to_date(r.TARIFFLEGACYEFFECTIVEFROMDATE,'DD/MM/YYYY'),
-l_serv_comp,
+'N',
 r.Tariffauthorisationcode,
 --r.VACANCYCHARGIGMETHODWATER,
 --r.VACANCYCHARGINGMETHODSEWERAGE,
@@ -1441,7 +1557,7 @@ trim(r.tar_ver_tariffcode),--TARIFFCODE_PK
 l_tariff_ver+1,--TARIFFVERSION
 to_date(r.TARIFFVEREFFECTIVEFROMDATE,'DD/MM/YYYY'),--TARIFFVEREFFECTIVEFROMDATE
 upper(r.tarver_TariffStatus),--TARIFFSTATUS-- issue 28 fix
-L_SERV_COMP,--APPLICABLESERVICECOMPONENT
+L_SERV_COMP,
 --nvl(r.Default_Return_to_Sewer,100),--DEFAULTRETURNTOSEWER
 l_serv_comp,--TARIFFCOMPONENTTYPE
 NULL,
@@ -1523,7 +1639,8 @@ end if;
                  P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', 'Error tolerance level exceeded',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
                                   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2394, l_tariff_count,    'Distinct MS tariffs read during Transform');
                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2404, l_tariff_dropped,    'Distinct MS tariffs dropped during Transform');
-                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2414, l_db_rows_inserted,  'Distinct MS tariffs written to MO_TARIFFs during Transform');
+                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2414, NVL(l_db_rows_stw_inserted,0),  'Distinct MS (STW) tariffs written to MO_TARIFFs during Transform');
+                 P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2704, NVL(l_db_rows_cb_inserted,0),  'Distinct MS (CB) tariffs written to MO_TARIFFs during Transform');
 
                  P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
                  COMMIT;
@@ -1538,15 +1655,50 @@ end if;
 
 
 l_progress := 'Writing Counts';
-select count(TARIFFCODE_PK) into l_db_count_after_insert from MO_TARIFF;
-l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
-
+--select count(TARIFFCODE_PK) into l_db_count_after_insert from MO_TARIFF;
+--l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
+BEGIN
+SELECT SUM(stw_count)          stw_count,
+       SUM(cross_border_count) cross_border_count
+  INTO l_db_rows_stw_inserted,
+       l_db_rows_cb_inserted
+  FROM (SELECT MT.TARIFFCODE_PK,
+               CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     1
+                  ELSE
+                     0
+                END AS STW_Count,
+                CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     0
+                  ELSE
+                     1
+                END AS Cross_Border_Count
+        FROM MO_TARIFF MT
+        JOIN MO_TARIFF_VERSION MTV
+          ON MT.TARIFFCODE_PK = MTV.TARIFFCODE_PK
+       WHERE MT.SERVICECOMPONENTTYPE = 'MS'
+         AND (MTV.TARIFFVERSION = (SELECT MAX(TARIFFVERSION) 
+                                     FROM MO_TARIFF_VERSION
+                                    WHERE TARIFFCODE_PK = MT.TARIFFCODE_PK
+                                      AND TARIFFCOMPONENTTYPE = MT.SERVICECOMPONENTTYPE)
+                                       OR MT.SEASONALFLAG = 'Y')
+);
+l_db_rows_inserted := l_db_rows_stw_inserted + l_db_rows_cb_inserted;
+EXCEPTION
+   WHEN NO_DATA_FOUND THEN
+      l_db_rows_stw_inserted := 0;
+      l_db_rows_cb_inserted := 0;
+      l_db_rows_inserted := 0;
+END;
 
   --  the recon key numbers used will be specific to each procedure
 
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2394, l_tariff_count,    'Distinct MS tariffs read during Transform');
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2404, l_tariff_dropped,    'Distinct MS tariffs dropped during Transform');
-  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2414, l_db_rows_inserted,  'Distinct MS tariffs written to MO_TARIFFs during Transform');
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2414, NVL(l_db_rows_stw_inserted,0),  'Distinct MS (STW) tariffs written to MO_TARIFFs during Transform');
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2704, NVL(l_db_rows_cb_inserted,0),  'Distinct MS (CB) tariffs written to MO_TARIFFs during Transform');
 
 IF l_tariff_count <> l_db_rows_inserted+l_tariff_dropped THEN
      l_job.IND_STATUS := 'ERR';
@@ -1617,6 +1769,8 @@ l_tariff_dropped number :=0;
 l_db_count_before_insert number :=0;
 l_db_count_after_insert number :=0;
 l_db_rows_inserted  number :=0;
+l_db_rows_stw_inserted   NUMBER                :=0;
+l_db_rows_cb_inserted    NUMBER                :=0;
 c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_TARIFF_SW';
   c_company_cd                  CONSTANT VARCHAR2(4) := 'STW1';
   l_error_number                VARCHAR2(255);
@@ -1667,7 +1821,7 @@ BEGIN
       RETURN;
    END IF;
 
- select count(TARIFFCODE_PK) into l_db_count_before_insert from MO_TARIFF;
+-- select count(TARIFFCODE_PK) into l_db_count_before_insert from MO_TARIFF;
 l_serv_comp := 'SW';
 -- xml file reading and storing the data into xmlClob_full_file
 xmlFile := UTL_FILE.FOPEN ('FILES', 'TARIFF_SW_XML.xml', 'R');
@@ -1742,7 +1896,7 @@ insert into MO_TARIFF (TARIFFCODE_PK,
 TARIFFEFFECTIVEFROMDATE,
 TARIFFSTATUS,
 TARIFFLEGACYEFFECTIVEFROMDATE,
-APPLICABLESERVICECOMPONENT,
+SEASONALFLAG, -- V 0.07
 TARIFFAUTHCODE,
 --VACANCYCHARGINGMETHODWATER,/* DB patch 15 fix*/
 --VACANCYCHARGINGMETHODSEWERAGE,/* DB patch 15 fix*/
@@ -1755,7 +1909,7 @@ VALUES
 to_date(r.TARIFFEFFECTIVEFROMDATE,'DD/MM/YYYY'),
 upper(r.TariffStatus), -- issue 28 fix
 to_date(r.TARIFFLEGACYEFFECTIVEFROMDATE,'DD/MM/YYYY'),
-l_serv_comp,
+'N',
 r.Tariffauthorisationcode,
 --r.VACANCYCHARGIGMETHODWATER,
 --r.VACANCYCHARGINGMETHODSEWERAGE,
@@ -1787,7 +1941,7 @@ trim(r.tar_ver_tariffcode),--TARIFFCODE_PK
 l_tariff_ver+1,--TARIFFVERSION
 to_date(r.TARIFFVEREFFECTIVEFROMDATE,'DD/MM/YYYY'),--TARIFFVEREFFECTIVEFROMDATE
 upper(r.tarver_TariffStatus),--TARIFFSTATUS-- issue 28 fix
-L_SERV_COMP,--APPLICABLESERVICECOMPONENT
+L_SERV_COMP,
 --nvl(r.Default_Return_to_Sewer,100),--DEFAULTRETURNTOSEWER
 l_serv_comp,--TARIFFCOMPONENTTYPE
 NULL,
@@ -1908,7 +2062,8 @@ end if;
                  P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', 'Error tolerance level exceeded',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
                                   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2390, l_tariff_count,    'Distinct SW tariffs read during Transform');
                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2400, l_tariff_dropped,    'Distinct SW tariffs dropped during Transform');
-                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2410, l_db_rows_inserted,  'Distinct SW tariffs written to MO_TARIFFs during Transform');
+                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2410, NVL(l_db_rows_stw_inserted,0),  'Distinct SW (STW) tariffs written to MO_TARIFFs during Transform');
+                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2700, NVL(l_db_rows_cb_inserted,0),  'Distinct SW (CB) tariffs written to MO_TARIFFs during Transform');
 
                  P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
                  COMMIT;
@@ -1922,16 +2077,51 @@ end if;
   END LOOP;
 
 l_progress := 'Writing Counts';
-select count(TARIFFCODE_PK) into l_db_count_after_insert from MO_TARIFF;
-l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
-
+--select count(TARIFFCODE_PK) into l_db_count_after_insert from MO_TARIFF;
+--l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
+BEGIN
+SELECT SUM(stw_count)          stw_count,
+       SUM(cross_border_count) cross_border_count
+  INTO l_db_rows_stw_inserted,
+       l_db_rows_cb_inserted
+  FROM (SELECT MT.TARIFFCODE_PK,
+               CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     1
+                  ELSE
+                     0
+                END AS STW_Count,
+                CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     0
+                  ELSE
+                     1
+                END AS Cross_Border_Count
+        FROM MO_TARIFF MT
+        JOIN MO_TARIFF_VERSION MTV
+          ON MT.TARIFFCODE_PK = MTV.TARIFFCODE_PK
+       WHERE MT.SERVICECOMPONENTTYPE = 'SW'
+         AND (MTV.TARIFFVERSION = (SELECT MAX(TARIFFVERSION) 
+                                     FROM MO_TARIFF_VERSION
+                                    WHERE TARIFFCODE_PK = MT.TARIFFCODE_PK
+                                      AND TARIFFCOMPONENTTYPE = MT.SERVICECOMPONENTTYPE)
+                                       OR MT.SEASONALFLAG = 'Y')
+);
+l_db_rows_inserted := l_db_rows_stw_inserted + l_db_rows_cb_inserted;
+EXCEPTION
+   WHEN NO_DATA_FOUND THEN
+      l_db_rows_stw_inserted := 0;
+      l_db_rows_cb_inserted := 0;
+      l_db_rows_inserted := 0;
+END;
 
   --  the recon key numbers used will be specific to each procedure
 
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2390, l_tariff_count,    'Distinct SW tariffs read during Transform');
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2400, l_tariff_dropped,    'Distinct SW tariffs dropped during Transform');
-  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2410, l_db_rows_inserted,  'Distinct SW tariffs written to MO_TARIFFs during Transform');
-
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2410, NVL(l_db_rows_stw_inserted,0),  'Distinct SW (STW) tariffs written to MO_TARIFFs during Transform');
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2700, NVL(l_db_rows_cb_inserted,0),  'Distinct SW (CB) tariffs written to MO_TARIFFs during Transform');
+  
 IF l_tariff_count <> l_db_rows_inserted+l_tariff_dropped THEN
      l_job.IND_STATUS := 'ERR';
      P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'X', 'Reconciliation counts do not match',  l_tariff_count || ',' || l_db_rows_inserted, l_err.TXT_DATA || ',' || l_progress);
@@ -1999,6 +2189,8 @@ l_tariff_dropped number :=0;
 l_db_count_before_insert number :=0;
 l_db_count_after_insert number :=0;
 l_db_rows_inserted  number :=0;
+l_db_rows_stw_inserted   NUMBER                :=0;
+l_db_rows_cb_inserted    NUMBER                :=0;
 c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_TARIFF_TE';
   c_company_cd                  CONSTANT VARCHAR2(4) := 'STW1';
   l_error_number                VARCHAR2(255);
@@ -2049,7 +2241,7 @@ BEGIN
       RETURN;
    END IF;
 
-SELECT COUNT(TARIFFCODE_PK) INTO l_db_count_before_insert FROM MO_TARIFF;
+--SELECT COUNT(TARIFFCODE_PK) INTO l_db_count_before_insert FROM MO_TARIFF;
 l_serv_comp := 'TE';
 -- xml file reading and storing the data into xmlClob_full_file
 xmlFile := UTL_FILE.FOPEN ('FILES', 'TARIFF_TE_XML.xml', 'R');
@@ -2141,7 +2333,7 @@ IF r.TariffCode  IS NOT NULL THEN
       TARIFFEFFECTIVEFROMDATE,
       TARIFFSTATUS,
       TARIFFLEGACYEFFECTIVEFROMDATE,
-      APPLICABLESERVICECOMPONENT,
+      SEASONALFLAG, -- V 0.07
       TARIFFAUTHCODE,
       --VACANCYCHARGINGMETHODWATER,/* DB patch 15 fix*/
       --VACANCYCHARGINGMETHODSEWERAGE,/* DB patch 15 fix*/
@@ -2156,7 +2348,7 @@ IF r.TariffCode  IS NOT NULL THEN
       to_date(r.TARIFFEFFECTIVEFROMDATE,'DD/MM/YYYY'),
       upper(r.TariffStatus), -- issue 28 fix
       to_date(r.TARIFFLEGACYEFFECTIVEFROMDATE,'DD/MM/YYYY'),
-      l_serv_comp,
+      'N',
       r.Tariffauthorisationcode,
       --r.VACANCYCHARGIGMETHODWATER,
       --r.VACANCYCHARGINGMETHODSEWERAGE,
@@ -2195,7 +2387,7 @@ IF r.tar_ver_tariffcode IS NOT NULL THEN
       l_tariff_ver+1,                                    --TARIFFVERSION
       to_date(r.TARIFFVEREFFECTIVEFROMDATE,'DD/MM/YYYY'),--TARIFFVEREFFECTIVEFROMDATE
       upper(r.tarver_TariffStatus),                      --TARIFFSTATUS-- issue 28 fix
-      L_SERV_COMP,                                       --APPLICABLESERVICECOMPONENT
+      L_SERV_COMP,                                       
       --nvl(r.Default_Return_to_Sewer,100),--DEFAULTRETURNTOSEWER
       l_serv_comp,--TARIFFCOMPONENTTYPE
       NULL,
@@ -2348,7 +2540,8 @@ end if;
                  P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', 'Error tolerance level exceeded',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
                                   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2392, l_tariff_count,    'Distinct TE tariffs read during Transform');
                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2402, l_tariff_dropped,    'Distinct TE tariffs dropped during Transform');
-                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2412, l_db_rows_inserted,  'Distinct TE tariffs written to MO_TARIFFs during Transform');
+                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2412, NVL(l_db_rows_stw_inserted,0),  'Distinct TE (STW) tariffs written to MO_TARIFFs during Transform');
+                 P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2702, NVL(l_db_rows_cb_inserted,0),  'Distinct TE (CB) tariffs written to MO_TARIFFs during Transform');
 
                  P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
                  COMMIT;
@@ -2363,16 +2556,51 @@ end if;
 
 
 l_progress := 'Writing Counts';
-select count(TARIFFCODE_PK) into l_db_count_after_insert from MO_TARIFF;
-l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
-
+--select count(TARIFFCODE_PK) into l_db_count_after_insert from MO_TARIFF;
+--l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
+BEGIN
+SELECT SUM(stw_count)          stw_count,
+       SUM(cross_border_count) cross_border_count
+  INTO l_db_rows_stw_inserted,
+       l_db_rows_cb_inserted
+  FROM (SELECT MT.TARIFFCODE_PK,
+               CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     1
+                  ELSE
+                     0
+                END AS STW_Count,
+                CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     0
+                  ELSE
+                     1
+                END AS Cross_Border_Count
+        FROM MO_TARIFF MT
+        JOIN MO_TARIFF_VERSION MTV
+          ON MT.TARIFFCODE_PK = MTV.TARIFFCODE_PK
+       WHERE MT.SERVICECOMPONENTTYPE = 'TE'
+         AND (MTV.TARIFFVERSION = (SELECT MAX(TARIFFVERSION) 
+                                     FROM MO_TARIFF_VERSION
+                                    WHERE TARIFFCODE_PK = MT.TARIFFCODE_PK
+                                      AND TARIFFCOMPONENTTYPE = MT.SERVICECOMPONENTTYPE)
+                                       OR MT.SEASONALFLAG = 'Y')
+);
+l_db_rows_inserted := l_db_rows_stw_inserted + l_db_rows_cb_inserted;
+EXCEPTION
+   WHEN NO_DATA_FOUND THEN
+      l_db_rows_stw_inserted := 0;
+      l_db_rows_cb_inserted := 0;
+      l_db_rows_inserted := 0;
+END;
 
   --  the recon key numbers used will be specific to each procedure
 
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2392, l_tariff_count,    'Distinct TE tariffs read during Transform');
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2402, l_tariff_dropped,    'Distinct TE tariffs dropped during Transform');
-  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2412, l_db_rows_inserted,  'Distinct TE tariffs written to MO_TARIFFs during Transform');
-
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2412, NVL(l_db_rows_stw_inserted,0),  'Distinct TE (STW) tariffs written to MO_TARIFFs during Transform');
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2702, NVL(l_db_rows_cb_inserted,0),  'Distinct TE (CB) tariffs written to MO_TARIFFs during Transform');
+  
 IF l_tariff_count <> l_db_rows_inserted+l_tariff_dropped THEN
      l_job.IND_STATUS := 'ERR';
      P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'X', 'Reconciliation counts do not match',  l_tariff_count || ',' || l_db_rows_inserted, l_err.TXT_DATA || ',' || l_progress);
@@ -2441,6 +2669,8 @@ l_tariff_dropped number :=0;
 l_db_count_before_insert number :=0;
 l_db_count_after_insert number :=0;
 l_db_rows_inserted  number :=0;
+l_db_rows_stw_inserted   NUMBER                :=0;
+l_db_rows_cb_inserted    NUMBER                :=0;
 c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_TARIFF_US';
   c_company_cd                  CONSTANT VARCHAR2(4) := 'STW1';
   l_error_number                VARCHAR2(255);
@@ -2491,7 +2721,7 @@ BEGIN
       RETURN;
    END IF;
 
- select count(TARIFFCODE_PK) into l_db_count_before_insert from MO_TARIFF;
+-- select count(TARIFFCODE_PK) into l_db_count_before_insert from MO_TARIFF;
 
 l_serv_comp := 'US';
 -- xml file reading and storing the data into xmlClob_full_file
@@ -2568,7 +2798,7 @@ insert into MO_TARIFF (TARIFFCODE_PK,
 TARIFFEFFECTIVEFROMDATE,
 TARIFFSTATUS,
 TARIFFLEGACYEFFECTIVEFROMDATE,
-APPLICABLESERVICECOMPONENT,
+SEASONALFLAG, -- V 0.07
 TARIFFAUTHCODE,
 --VACANCYCHARGINGMETHODWATER,/* DB patch 15 fix*/
 --VACANCYCHARGINGMETHODSEWERAGE,/* DB patch 15 fix*/
@@ -2581,7 +2811,7 @@ VALUES
 to_date(r.TARIFFEFFECTIVEFROMDATE,'DD/MM/YYYY'),
 upper(r.TariffStatus), -- issue 28 fix
 to_date(r.TARIFFLEGACYEFFECTIVEFROMDATE,'DD/MM/YYYY'),
-l_serv_comp,
+'N',
 r.Tariffauthorisationcode,
 --r.VACANCYCHARGIGMETHODWATER,
 --r.VACANCYCHARGINGMETHODSEWERAGE,
@@ -2613,7 +2843,7 @@ trim(r.tar_ver_tariffcode),--TARIFFCODE_PK
 l_tariff_ver+1,--TARIFFVERSION
 to_date(r.TARIFFVEREFFECTIVEFROMDATE,'DD/MM/YYYY'),--TARIFFVEREFFECTIVEFROMDATE
 upper(r.tarver_TariffStatus),--TARIFFSTATUS-- issue 28 fix
-L_SERV_COMP,--APPLICABLESERVICECOMPONENT
+L_SERV_COMP,
 --nvl(r.Default_Return_to_Sewer,100),--DEFAULTRETURNTOSEWER
 l_serv_comp,--TARIFFCOMPONENTTYPE
 NULL,
@@ -2699,7 +2929,8 @@ end if;
                  P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', 'Error tolerance level exceeded',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
                                   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2391, l_tariff_count,    'Distinct US tariffs read during Transform');
                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2401, l_tariff_dropped,    'Distinct US tariffs dropped during Transform');
-                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2411, l_db_rows_inserted,  'Distinct US tariffs written to MO_TARIFFs during Transform');
+                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2411, NVL(l_db_rows_stw_inserted,0),  'Distinct US (STW) tariffs written to MO_TARIFFs during Transform');
+                 P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2701, NVL(l_db_rows_cb_inserted,0),  'Distinct US (CB) tariffs written to MO_TARIFFs during Transform');
 
                  P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
                  COMMIT;
@@ -2713,16 +2944,51 @@ end if;
   END LOOP;
 
 l_progress := 'Writing Counts';
-select count(TARIFFCODE_PK) into l_db_count_after_insert from MO_TARIFF;
-l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
-
+--select count(TARIFFCODE_PK) into l_db_count_after_insert from MO_TARIFF;
+--l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
+BEGIN
+SELECT SUM(stw_count)          stw_count,
+       SUM(cross_border_count) cross_border_count
+  INTO l_db_rows_stw_inserted,
+       l_db_rows_cb_inserted
+  FROM (SELECT MT.TARIFFCODE_PK,
+               CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     1
+                  ELSE
+                     0
+                END AS STW_Count,
+                CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     0
+                  ELSE
+                     1
+                END AS Cross_Border_Count
+        FROM MO_TARIFF MT
+        JOIN MO_TARIFF_VERSION MTV
+          ON MT.TARIFFCODE_PK = MTV.TARIFFCODE_PK
+       WHERE MT.SERVICECOMPONENTTYPE = 'US'
+         AND (MTV.TARIFFVERSION = (SELECT MAX(TARIFFVERSION) 
+                                     FROM MO_TARIFF_VERSION
+                                    WHERE TARIFFCODE_PK = MT.TARIFFCODE_PK
+                                      AND TARIFFCOMPONENTTYPE = MT.SERVICECOMPONENTTYPE)
+                                       OR MT.SEASONALFLAG = 'Y')
+);
+l_db_rows_inserted := l_db_rows_stw_inserted + l_db_rows_cb_inserted;
+EXCEPTION
+   WHEN NO_DATA_FOUND THEN
+      l_db_rows_stw_inserted := 0;
+      l_db_rows_cb_inserted := 0;
+      l_db_rows_inserted := 0;
+END;
 
   --  the recon key numbers used will be specific to each procedure
 
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2391, l_tariff_count,    'Distinct US tariffs read during Transform');
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2401, l_tariff_dropped,    'Distinct US tariffs dropped during Transform');
-  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2411, l_db_rows_inserted,  'Distinct US tariffs written to MO_TARIFFs during Transform');
-
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2411, NVL(l_db_rows_stw_inserted,0),  'Distinct US (STW) tariffs written to MO_TARIFFs during Transform');
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2701, NVL(l_db_rows_cb_inserted,0),  'Distinct US (CB) tariffs written to MO_TARIFFs during Transform');
+  
   IF l_tariff_count <> l_db_rows_inserted+l_tariff_dropped THEN
      l_job.IND_STATUS := 'ERR';
      P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'X', 'Reconciliation counts do not match',  l_tariff_count || ',' || l_db_rows_inserted, l_err.TXT_DATA || ',' || l_progress);
@@ -2789,6 +3055,8 @@ l_tariff_dropped number :=0;
 l_db_count_before_insert number :=0;
 l_db_count_after_insert number :=0;
 l_db_rows_inserted  number :=0;
+l_db_rows_stw_inserted   NUMBER                :=0;
+l_db_rows_cb_inserted    NUMBER                :=0;
 c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_TARIFF_UW';
   c_company_cd                  CONSTANT VARCHAR2(4) := 'STW1';
   l_error_number                VARCHAR2(255);
@@ -2839,7 +3107,7 @@ BEGIN
       RETURN;
    END IF;
 
- select count(TARIFFCODE_PK) into l_db_count_before_insert from MO_TARIFF;
+-- select count(TARIFFCODE_PK) into l_db_count_before_insert from MO_TARIFF;
 
 
 l_serv_comp := 'UW';
@@ -2912,7 +3180,7 @@ insert into MO_TARIFF (TARIFFCODE_PK,
 TARIFFEFFECTIVEFROMDATE,
 TARIFFSTATUS,
 TARIFFLEGACYEFFECTIVEFROMDATE,
-APPLICABLESERVICECOMPONENT,
+SEASONALFLAG, -- V 0.07
 TARIFFAUTHCODE,
 --VACANCYCHARGINGMETHODWATER,/* DB patch 15 fix*/
 --VACANCYCHARGINGMETHODSEWERAGE,/* DB patch 15 fix*/
@@ -2925,7 +3193,7 @@ VALUES
 to_date(r.TARIFFEFFECTIVEFROMDATE,'DD/MM/YYYY'),
 upper(r.TariffStatus), -- issue 28 fix
 to_date(r.TARIFFLEGACYEFFECTIVEFROMDATE,'DD/MM/YYYY'),
-l_serv_comp,
+'N',
 r.Tariffauthorisationcode,
 --r.VACANCYCHARGIGMETHODWATER,
 --r.VACANCYCHARGINGMETHODSEWERAGE,
@@ -2957,7 +3225,7 @@ trim(r.tar_ver_tariffcode),--TARIFFCODE_PK
 l_tariff_ver+1,--TARIFFVERSION
 to_date(r.TARIFFVEREFFECTIVEFROMDATE,'DD/MM/YYYY'),--TARIFFVEREFFECTIVEFROMDATE
 upper(r.tarver_TariffStatus),--TARIFFSTATUS-- issue 28 fix
-L_SERV_COMP,--APPLICABLESERVICECOMPONENT
+L_SERV_COMP,
 --nvl(r.Default_Return_to_Sewer,100),--DEFAULTRETURNTOSEWER
 l_serv_comp,--TARIFFCOMPONENTTYPE
 NULL,
@@ -3044,7 +3312,8 @@ end if;
                  P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', 'Error tolerance level exceeded',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
                                   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2396, l_tariff_count,    'Distinct UW tariffs read during Transform');
                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2406, l_tariff_dropped,    'Distinct UW tariffs dropped during Transform');
-                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2416, l_db_rows_inserted,  'Distinct UW tariffs written to MO_TARIFFs during Transform');
+                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2416, NVL(l_db_rows_stw_inserted,0),  'Distinct UW (STW) tariffs written to MO_TARIFFs during Transform');
+                 P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2706, NVL(l_db_rows_cb_inserted,0),  'Distinct UW (CB) tariffs written to MO_TARIFFs during Transform');
 
                  P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
                  COMMIT;
@@ -3058,15 +3327,51 @@ end if;
   END LOOP;
 
 l_progress := 'Writing Counts';
-select count(TARIFFCODE_PK) into l_db_count_after_insert from MO_TARIFF;
-l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
-
+--select count(TARIFFCODE_PK) into l_db_count_after_insert from MO_TARIFF;
+--l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
+BEGIN
+SELECT SUM(stw_count)          stw_count,
+       SUM(cross_border_count) cross_border_count
+  INTO l_db_rows_stw_inserted,
+       l_db_rows_cb_inserted
+  FROM (SELECT MT.TARIFFCODE_PK,
+               CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     1
+                  ELSE
+                     0
+                END AS STW_Count,
+                CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     0
+                  ELSE
+                     1
+                END AS Cross_Border_Count
+        FROM MO_TARIFF MT
+        JOIN MO_TARIFF_VERSION MTV
+          ON MT.TARIFFCODE_PK = MTV.TARIFFCODE_PK
+       WHERE MT.SERVICECOMPONENTTYPE = 'UW'
+         AND (MTV.TARIFFVERSION = (SELECT MAX(TARIFFVERSION) 
+                                     FROM MO_TARIFF_VERSION
+                                    WHERE TARIFFCODE_PK = MT.TARIFFCODE_PK
+                                      AND TARIFFCOMPONENTTYPE = MT.SERVICECOMPONENTTYPE)
+                                       OR MT.SEASONALFLAG = 'Y')
+);
+l_db_rows_inserted := l_db_rows_stw_inserted + l_db_rows_cb_inserted;
+EXCEPTION
+   WHEN NO_DATA_FOUND THEN
+      l_db_rows_stw_inserted := 0;
+      l_db_rows_cb_inserted := 0;
+      l_db_rows_inserted := 0;
+END;
 
   --  the recon key numbers used will be specific to each procedure
 
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2396, l_tariff_count,    'Distinct UW tariffs read during Transform');
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2406, l_tariff_dropped,    'Distinct UW tariffs dropped during Transform');
-  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2416, l_db_rows_inserted,  'Distinct UW tariffs written to MO_TARIFFs during Transform');
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2416, NVL(l_db_rows_stw_inserted,0),  'Distinct UW (STW) tariffs written to MO_TARIFFs during Transform');
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2706, NVL(l_db_rows_cb_inserted,0),  'Distinct UW (CB) tariffs written to MO_TARIFFs during Transform');
+
 IF l_tariff_count <> l_db_rows_inserted+l_tariff_dropped THEN
      l_job.IND_STATUS := 'ERR';
      P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'X', 'Reconciliation counts do not match',  l_tariff_count || ',' || l_db_rows_inserted, l_err.TXT_DATA || ',' || l_progress);
@@ -3134,6 +3439,8 @@ l_tariff_dropped number :=0;
 l_db_count_before_insert number :=0;
 l_db_count_after_insert number :=0;
 l_db_rows_inserted  number :=0;
+l_db_rows_stw_inserted   NUMBER                :=0;
+l_db_rows_cb_inserted    NUMBER                :=0;
 c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_TARIFF_HD';
   c_company_cd                  CONSTANT VARCHAR2(4) := 'STW1';
   l_error_number                VARCHAR2(255);
@@ -3184,7 +3491,7 @@ BEGIN
       RETURN;
    END IF;
 
- select count(TARIFFCODE_PK) into l_db_count_before_insert from MO_TARIFF;
+-- select count(TARIFFCODE_PK) into l_db_count_before_insert from MO_TARIFF;
 
 
 l_serv_comp := 'HD';
@@ -3262,7 +3569,7 @@ insert into MO_TARIFF (TARIFFCODE_PK,
 TARIFFEFFECTIVEFROMDATE,
 TARIFFSTATUS,
 TARIFFLEGACYEFFECTIVEFROMDATE,
-APPLICABLESERVICECOMPONENT,
+SEASONALFLAG, -- V 0.07
 TARIFFAUTHCODE,
 --VACANCYCHARGINGMETHODWATER,/* DB patch 15 fix*/
 --VACANCYCHARGINGMETHODSEWERAGE,/* DB patch 15 fix*/
@@ -3275,7 +3582,7 @@ VALUES
 to_date(r.TARIFFEFFECTIVEFROMDATE,'DD/MM/YYYY'),
 upper(r.TariffStatus), -- issue 28 fix
 to_date(r.TARIFFLEGACYEFFECTIVEFROMDATE,'DD/MM/YYYY'),
-l_serv_comp,
+'N',
 r.Tariffauthorisationcode,
 --r.VACANCYCHARGIGMETHODWATER,
 --r.VACANCYCHARGINGMETHODSEWERAGE,
@@ -3307,7 +3614,7 @@ trim(r.tar_ver_tariffcode),--TARIFFCODE_PK
 l_tariff_ver+1,--TARIFFVERSION
 to_date(r.TARIFFVEREFFECTIVEFROMDATE,'DD/MM/YYYY'),--TARIFFVEREFFECTIVEFROMDATE
 upper(r.tarver_TariffStatus),--TARIFFSTATUS-- issue 28 fix
-L_SERV_COMP,--APPLICABLESERVICECOMPONENT
+L_SERV_COMP,
 --nvl(r.Default_Return_to_Sewer,100),--DEFAULTRETURNTOSEWER
 l_serv_comp,--TARIFFCOMPONENTTYPE
 NULL,
@@ -3436,7 +3743,8 @@ end if;
                  P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2398, l_tariff_count,    'Distinct HD tariffs read during Transform');
                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2408, l_tariff_dropped,    'Distinct HD tariffs dropped during Transform');
-                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2418, l_db_rows_inserted,  'Distinct HD tariffs written to MO_TARIFFs during Transform');
+                  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2418, NVL(l_db_rows_stw_inserted,0),  'Distinct HD (STW) tariffs written to MO_TARIFFs during Transform');
+                 P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2708, NVL(l_db_rows_cb_inserted,0),  'Distinct HD (CB) tariffs written to MO_TARIFFs during Transform');
                  COMMIT;
                  return_code := -1;
                  RETURN;
@@ -3448,16 +3756,51 @@ end if;
   END LOOP;
 
 l_progress := 'Writing Counts';
-select count(TARIFFCODE_PK) into l_db_count_after_insert from MO_TARIFF;
-l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
-
+--select count(TARIFFCODE_PK) into l_db_count_after_insert from MO_TARIFF;
+--l_db_rows_inserted := l_db_count_after_insert - l_db_count_before_insert;
+BEGIN
+SELECT SUM(stw_count)          stw_count,
+       SUM(cross_border_count) cross_border_count
+  INTO l_db_rows_stw_inserted,
+       l_db_rows_cb_inserted
+  FROM (SELECT MT.TARIFFCODE_PK,
+               CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     1
+                  ELSE
+                     0
+                END AS STW_Count,
+                CASE 
+                  WHEN MT.TARIFFCODE_PK LIKE '1STW%' THEN
+                     0
+                  ELSE
+                     1
+                END AS Cross_Border_Count
+        FROM MO_TARIFF MT
+        JOIN MO_TARIFF_VERSION MTV
+          ON MT.TARIFFCODE_PK = MTV.TARIFFCODE_PK
+       WHERE MT.SERVICECOMPONENTTYPE = 'HD'
+         AND (MTV.TARIFFVERSION = (SELECT MAX(TARIFFVERSION) 
+                                     FROM MO_TARIFF_VERSION
+                                    WHERE TARIFFCODE_PK = MT.TARIFFCODE_PK
+                                      AND TARIFFCOMPONENTTYPE = MT.SERVICECOMPONENTTYPE)
+                                       OR MT.SEASONALFLAG = 'Y')
+);
+l_db_rows_inserted := l_db_rows_stw_inserted + l_db_rows_cb_inserted;
+EXCEPTION
+   WHEN NO_DATA_FOUND THEN
+      l_db_rows_stw_inserted := 0;
+      l_db_rows_cb_inserted := 0;
+      l_db_rows_inserted := 0;
+END;
 
   --  the recon key numbers used will be specific to each procedure
 
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2398, l_tariff_count,    'Distinct HD tariffs read during Transform');
   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2408, l_tariff_dropped,    'Distinct HD tariffs dropped during Transform');
-  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2418, l_db_rows_inserted,  'Distinct HD tariffs written to MO_TARIFFs during Transform');
-
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2418, NVL(l_db_rows_stw_inserted,0),  'Distinct HD (STW) tariffs written to MO_TARIFFs during Transform');
+  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP44', 2708, NVL(l_db_rows_cb_inserted,0),  'Distinct HD (CB) tariffs written to MO_TARIFFs during Transform');
+  
   IF l_tariff_count <> l_db_rows_inserted+l_tariff_dropped THEN
      l_job.IND_STATUS := 'ERR';
      P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'X', 'Reconciliation counts do not match',  l_tariff_count || ',' || l_db_rows_inserted, l_err.TXT_DATA || ',' || l_progress);
@@ -3489,5 +3832,4 @@ Commit;
 
 END P_MIG_TARIFF;
 /
-
 exit;

@@ -5,7 +5,7 @@
 --
 -- FILENAME       : P_MOU_TRAN_BAD_DATA.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 4309 $
 --
 -- CREATED        : 11/05/2016
 --
@@ -130,7 +130,7 @@ BEGIN
   LOOP
     -- insert a record showing the table, column and value containing the bad data
     l_sql := NULL;
-    l_sql := 'INSERT INTO MOUTRAN.BT_BAD_DATA(ROW_ID,SEARCH_TERM,TABLE_NAME,COLUMN_NAME,VALUE,STATUS) ';
+    l_sql := 'INSERT INTO BT_BAD_DATA(ROW_ID,SEARCH_TERM,TABLE_NAME,COLUMN_NAME,VALUE,STATUS) ';
     
     l_sql := l_sql || 'SELECT ROWID ROW_ID,''' || b.SEARCH_TERM || ''',''' || b.TABLE_NAME || ''' TABLE_NAME, ' 
            || '''' || b.COLUMN_NAME || ''' COLUMN_NAME, '
@@ -157,7 +157,7 @@ BEGIN
   
   FOR r IN bad_data_cur 
   LOOP
-    -- update the bad data records in MOUTRAN tables so records can be processed by delivery
+    -- update the bad data records in TRANSFORM tables so records can be processed by delivery
     l_sql := 'UPDATE ' || r.TABLE_NAME || ' SET ' || r.COLUMN_NAME || ' = REPLACE(' || r.COLUMN_NAME || ',''' || r.SEARCH_TERM || ''','''') '
             || 'WHERE ROWID = ''' || r.ROW_ID || '''';
     BEGIN

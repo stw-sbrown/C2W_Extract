@@ -9,7 +9,7 @@ PROCEDURE P_MOU_DEL_METER(no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
 --
 -- FILENAME       : P_MOU_DEL_METER.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5333 $
 --
 -- CREATED        : 08/04/2016
 --
@@ -36,6 +36,9 @@ PROCEDURE P_MOU_DEL_METER(no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
 --                                    files
 -- V 1.02      18/05/2016  K.Burton   Changes to MANUFACTURER_PK to remove spaces from names as per
 --                                    MOSL upload file feedback
+-- V 1.03      11/07/2016  K.Burton   Issue I-279 - Added NONMARKETMETERFLAG
+-- V 1.04      25/08/2016  S.Badhan   I-320. If user FINDEL use directory FINEXPORT.
+-- V 1.05      01/09/2016  K.Burton   Updates for splitting STW data into 3 batches
 ----------------------------------------------------------------------------------------
 
   c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_DEL_METER';
@@ -111,7 +114,8 @@ PROCEDURE P_MOU_DEL_METER(no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
            ADDRESSLINE05,
            POSTCODE,
            PAFADDRESSKEY,
-           SPID
+           SPID,
+           NONMARKETMETERFLAG -- V 1.03 
     FROM (
     SELECT /*+ PARALLEL(MMR,12) PARALLEL(MM,12) PARALLEL(MMA,12) PARALLEL(MA,12) */
     DISTINCT
@@ -155,17 +159,18 @@ PROCEDURE P_MOU_DEL_METER(no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
            MA.POSTCODE,
 --           MA.COUNTRY, -- changed for V 0.03
            MA.PAFADDRESSKEY,
-           MM.SPID_PK SPID -- NOT OUTPUT TO FILE
+           MM.SPID_PK SPID, -- NOT OUTPUT TO FILE
+           MM.NONMARKETMETERFLAG -- NOT OUTPUT TO FILE -- V 1.03 
     FROM MOUTRAN.MO_METER MM,
          MOUTRAN.MO_METER_ADDRESS MMA,
          MOUTRAN.MO_ADDRESS MA ,
-         MOUTRAN.MO_METER_READING MMR --,
-    WHERE (MM.NONMARKETMETERFLAG = 1 OR MM.SPID_PK IN (SELECT SPID_PK FROM DEL_SUPPLY_POINT))
-    AND MM.MANUFACTURERSERIALNUM_PK = MMA.METERSERIALNUMBER_PK
+         MOUTRAN.MO_METER_READING MMR 
+    WHERE MM.MANUFACTURERSERIALNUM_PK = MMR.MANUFACTURERSERIALNUM_PK(+)
+    AND MM.MANUFACTURER_PK = MMR.MANUFACTURER_PK(+)
+    AND (MM.NONMARKETMETERFLAG = 1 OR MM.SPID_PK IN (SELECT SPID_PK FROM DEL_SUPPLY_POINT))
     AND MM.MANUFACTURER_PK = MMA.MANUFACTURER_PK
     AND MMA.ADDRESS_PK = MA.ADDRESS_PK
-    AND MM.MANUFACTURER_PK = MMR.MANUFACTURER_PK
-    AND MM.MANUFACTURERSERIALNUM_PK = MMR.MANUFACTURERSERIALNUM_PK
+    AND MM.MANUFACTURERSERIALNUM_PK = MMA.METERSERIALNUMBER_PK
     ORDER BY MM.MANUFACTURER_PK, MM.MANUFACTURERSERIALNUM_PK);
 
   TYPE tab_meter IS TABLE OF cur_meter%ROWTYPE INDEX BY PLS_INTEGER;
@@ -185,6 +190,10 @@ BEGIN
    l_no_row_err := 0;
    l_no_row_exp := 0;
    l_job.IND_STATUS := 'RUN';
+
+   IF USER = 'FINDEL' THEN
+      l_filepath := 'FINEXPORT';
+   END IF;
 
    -- get job no and start job
    P_MIG_BATCH.FN_STARTJOB(no_batch, no_job, c_module_name,
@@ -261,76 +270,6 @@ BEGIN
         -- keep count of records written
         IF l_rec_written THEN
            l_no_row_insert := l_no_row_insert + 1;
-
---          BEGIN
---            l_progress := 'write row export file ';
---
---            UTL_FILE.PUT(fHandle,t_meter(i).MANUFACTURERSERIALNUM_PK || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).MANUFACTURER_PK || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).NUMBEROFDIGITS || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).MEASUREUNITATMETER || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).MEASUREUNITFREEDESCRIPTOR || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).PHYSICALMETERSIZE || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).METERREADFREQUENCY || '|');
---            UTL_FILE.PUT(fHandle,TO_CHAR(t_meter(i).INITIALMETERREADDATE,'YYYY-MM-DD') || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).RETURNTOSEWER || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).WATERCHARGEMETERSIZE || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).SEWCHARGEABLEMETERSIZE || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).DATALOGGERWHOLESALER || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).DATALOGGERNONWHOLESALER || '|');
---            UTL_FILE.PUT(fHandle,TO_CHAR(t_meter(i).GPSX,'000000.9') || '|');  -- V0.04 - Defect 24
---            UTL_FILE.PUT(fHandle,TO_CHAR(t_meter(i).GPSY,'000000.9') || '|');  -- V0.04 - Defect 24
---            UTL_FILE.PUT(fHandle,t_meter(i).METERLOCFREEDESCRIPTOR || '|');
---            UTL_FILE.PUT(fHandle,TO_CHAR(t_meter(i).METEROUTREADERGPSX,'000000.9') || '|');  -- V0.04 - Defect 24
---            UTL_FILE.PUT(fHandle,TO_CHAR(t_meter(i).METEROUTREADERGPSY,'000000.9') || '|');  -- V0.04 - Defect 24
---            UTL_FILE.PUT(fHandle,t_meter(i).OUTREADERLOCFREEDES || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).METEROUTREADERLOCCODE || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).METERTREATMENT || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).METERLOCATIONCODE || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).COMBIMETERFLAG || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).YEARLYVOLESTIMATE || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).REMOTEREADFLAG || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).REMOTEREADTYPE || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).OUTREADERID || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).OUTREADERPROTOCOL || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).LOCATIONFREETEXTDESCRIPTOR || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).SECONDADDRESABLEOBJECT || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).PRIMARYADDRESSABLEOBJECT || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).ADDRESSLINE01 || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).ADDRESSLINE02 || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).ADDRESSLINE03 || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).ADDRESSLINE04 || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).ADDRESSLINE05 || '|');
---            UTL_FILE.PUT(fHandle,t_meter(i).POSTCODE || '|');
-----            UTL_FILE.PUT(fHandle,t_meter(i).COUNTRY || '|'); -- changed for V 0.03
---            UTL_FILE.PUT_LINE(fHandle,t_meter(i).PAFADDRESSKEY); -- V 0.05
---          EXCEPTION
---            WHEN OTHERS THEN
---                 l_rec_written := FALSE;
---                 l_error_number := SQLCODE;
---                 l_error_message := SQLERRM;
---
---                 P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', substr(l_error_message,1,100),  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
---                 l_no_row_exp := l_no_row_exp + 1;
---
---                 -- if tolearance limit has een exceeded, set error message and exit out
---                 IF (   l_no_row_exp > l_job.EXP_TOLERANCE
---                     OR l_no_row_err > l_job.ERR_TOLERANCE
---                     OR l_no_row_war > l_job.WAR_TOLERANCE)
---                 THEN
---                     CLOSE cur_meter;
---                     l_job.IND_STATUS := 'ERR';
---                     P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', 'Error tolerance level exceeded',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
---                     P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
---                     COMMIT;
---                     return_code := -1;
---                     RETURN;
---                  END IF;
---          END;
---
---          IF l_rec_written THEN
---             l_no_row_written := l_no_row_written + 1;
---          END IF;
         END IF;
 
     END LOOP;
@@ -341,57 +280,32 @@ BEGIN
     CASE w.WHOLESALER_ID 
       WHEN 'ANGLIAN-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_ANW_V';
-        l_filename := 'METER_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_ANW_V;
-        END IF;
       WHEN 'DWRCYMRU-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_WEL_V';
-        l_filename := 'METER_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_WEL_V;
-        END IF;
       WHEN 'SEVERN-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_STW_V';
-        l_filename := 'METER_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_STW_V;
-        END IF;
+      WHEN 'SEVERN-A' THEN
+        l_sql := 'SELECT * FROM DEL_METER_STWA_V';
+      WHEN 'SEVERN-B' THEN
+        l_sql := 'SELECT * FROM DEL_METER_STWB_V';
       WHEN 'THAMES-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_THW_V';
-        l_filename := 'METER_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_THW_V;
-        END IF;
       WHEN 'WESSEX-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_WEW_V';
-        l_filename := 'METER_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_WEW_V;
-        END IF;
       WHEN 'YORKSHIRE-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_YOW_V';
-        l_filename := 'METER_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_YOW_V;
-        END IF;
       WHEN 'UNITED-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_UUW_V';
-        l_filename := 'METER_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_UUW_V;
-        END IF;
       WHEN 'SOUTHSTAFF-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SSW_V';
-        l_filename := 'METER_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SSW_V;
-        END IF;
     END CASE;
     IF w.RUN_FLAG = 1 THEN
+      l_filename := 'METER_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
       P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
       l_no_row_written := l_no_row_written + l_rows_written; -- add rows written to total
     ELSE
+      l_sql := 'SELECT COUNT(*) FROM DEL_METER M, DEL_SUPPLY_POINT SP WHERE M.SPID = SP.SPID_PK AND SP.WHOLESALERID = :wholesaler';
+      EXECUTE IMMEDIATE l_sql INTO l_count USING w.WHOLESALER_ID;
       l_no_row_dropped_cb := l_no_row_dropped_cb + l_count;
     END IF;
   END LOOP;

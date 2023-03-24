@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_KEY_GEN.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5284 $
 --
 -- CREATED        : 24/02/2016
 --
@@ -25,6 +25,19 @@ IS
 --
 -- Version     Date        Author     Description
 -- ---------   ----------  --------   --------------------------------------------------
+-- V 2.12      18/08/2016  O.Badmus   Appending properties in LU_SPID_OWC_RETAILER 
+-- V 2.11      17/08/2016  D.Cheung   CR_034 - Exclude ANGLIAN-W (ID_OWC) from METER keygen
+-- V 2.10      10/08/2016  O.Badmus   V 2.04 revisited. Null dt_end for properties in LU_SPID_OWC_RETAILER (So that properties that have switched suppliers can flow through)
+-- V 2.09      04/08/2016  D.Cheung   I-299 - Change Aggregate-Network logic based on new AGG_NET values
+-- V 2.08      03/08/2016  D.Cheung   I-326 - Add Order by NO_LEGAL_ENTITY to partition logic to force consistent results
+-- V 2.07      08/07/2016  S.Badhan   I-282. Retrieve all aggregrate properties.
+-- V 2.06      07/07/2016  S.Badhan   I-278. For aggregrate properties use services from master property.
+--                                    Write service provision missing from aggregate property to BT_MISS_AG_SC.
+-- V 2.05      05/07/2016  D.Cheung   CR_021 - Move processing for deleting AGGREGATE properties from BT_TVP054 to ABOVE INSERT Aggregates
+-- V 2.04      04/07/2016  O.Badmus   Update statments added to null dt_end for properties in LU_SPID_OWC_RETAILER (So that properties that have switched suppliers can flow through)
+-- V 2.03      28/06/2016  S.Badhan   CR_021  Add new columns from ECT to BT_TVP054 and BT_TVP163
+-- V 2.02      27/06/2016  L.Smith    Performance changes
+-- V 2.01      06/06/2016  D.Cheung   CR_018 - Add Lookup for SAP FLOCA Number
 -- V 1.08      18/05/2016  L.Smith    Force a direct load when inserting.
 -- V 1.07      28/04/2016  S.Badhan   I-161 and I-162. Add reconciliation counts.
 -- V 1.06      15/04/2016  S.Badhan   Populate FG_CONSOLIDATED from ECT.
@@ -61,7 +74,11 @@ IS
   l_water_sp                    NUMBER(9);
   l_sewage_sp                   NUMBER(9);
   l_le                          NUMBER(9);
-  
+  l_orig_ins_tvp054             NUMBER(9);
+  l_dom_delete                  NUMBER(9);
+  l_agg_del_tvp054              NUMBER(9);
+  l_agg_tvp054                  NUMBER(9);
+
 BEGIN
  
    l_progress := 'Start of key gen';
@@ -94,6 +111,9 @@ BEGIN
    l_progress := 'truncating table';
 
    EXECUTE IMMEDIATE 'TRUNCATE TABLE BT_TVP054';
+   EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP054_IDX1 UNUSABLE';
+   EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP054_IDX2 UNUSABLE';
+   EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP054_IDX3 UNUSABLE';
 
 
   l_progress := 'populating table';
@@ -103,9 +123,9 @@ BEGIN
    (CD_COMPANY_SYSTEM, NO_ACCOUNT, NO_PROPERTY, CD_SERVICE_PROV, NO_COMBINE_054, NO_SERV_PROV, DT_START, DT_END,
    NM_LOCAL_SERVICE, CD_PROPERTY_USE, NO_COMBINE_024, TP_CUST_ACCT_ROLE, NO_LEGAL_ENTITY, nc024_DT_START, nc024_DT_END,
    IND_LEGAL_ENTITY, 
-   --NO_COMBINE_163, IND_INST_AT_PROP, TVP202_NO_PROPERTY, TVP202_NO_SERV_PROV, 
    FG_TOO_HARD, CD_PROPERTY_USE_ORIG,
-   CD_PROPERTY_USE_CURR, CD_PROPERTY_USE_FUT, UDPRN, UPRN, VOA_REFERENCE, SAP_FLOC, CORESPID, AGG_NET, FG_CONSOLIDATED)   
+   CD_PROPERTY_USE_CURR, CD_PROPERTY_USE_FUT, UDPRN, UPRN, VOA_REFERENCE, SAP_FLOC, CORESPID, AGG_NET, FG_CONSOLIDATED,
+   FG_TE, FG_MECOMS_RDY, NO_PROPERTY_MASTER, FG_NMM)  
   SELECT CD_COMPANY_SYSTEM,
        NO_ACCOUNT,
        NO_PROPERTY,
@@ -122,10 +142,6 @@ BEGIN
        nc024_DT_START,
        nc024_DT_END,
        IND_LEGAL_ENTITY,
-   --    NO_COMBINE_163,
-  --     IND_INST_AT_PROP, 
-  --     TVP202_NO_PROPERTY, 
-  --     TVP202_NO_SERV_PROV,
        FG_TOO_HARD,
        CD_PROPERTY_USE_ORIG,
 	     CD_PROPERTY_USE_CURR, 
@@ -136,7 +152,11 @@ BEGIN
        SAP_FLOC,
        CORESPID,
        AGG_NET, 
-       FG_CONSOLIDATED       
+       FG_CONSOLIDATED,
+       FG_TE, 
+       FG_MECOMS_RDY,
+       NO_PROPERTY_MASTER, 
+       FG_NMM
 FROM       
 (SELECT  tnhh.CD_COMPANY_SYSTEM,
        tnhh.NO_ACCOUNT,
@@ -154,10 +174,6 @@ FROM
        tnhh.nc024_DT_START,
        tnhh.nc024_DT_END,
        tnhh.IND_LEGAL_ENTITY,
---       tnhh.NO_COMBINE_163,
---       tnhh.IND_INST_AT_PROP, 
---       tnhh.TVP202_NO_PROPERTY, 
---       tnhh.TVP202_NO_SERV_PROV,
        tnhh.FG_TOO_HARD,
        telg.CD_PROPERTY_USE_ORIG,
 	     telg.CD_PROPERTY_USE_CURR, 
@@ -165,33 +181,94 @@ FROM
 	     telg.UDPRN,
 	     telg.UPRN,
        telg.VOA_REFERENCE,
-       telg.SAP_FLOC,
+       lsf.SAPFLOCNUMBER AS SAP_FLOC,
        telg.CORESPID, 
        telg.AGG_NET, 
        telg.FG_CONSOLIDATED,
-       ROW_NUMBER() OVER ( PARTITION BY tnhh.NO_PROPERTY, tnhh.NO_SERV_PROV ORDER BY tnhh.NO_PROPERTY, tnhh.NO_SERV_PROV, tnhh.DT_END desc NULLS FIRST, nc024_DT_START desc ) AS Record_Nr
+       telg.FG_TE, 
+       telg.FG_MECOMS_RDY,
+       telg.NO_PROPERTY_MASTER, 
+       telg.FG_NMM,
+       ROW_NUMBER() OVER ( PARTITION BY tnhh.NO_PROPERTY, tnhh.NO_SERV_PROV ORDER BY tnhh.NO_PROPERTY, tnhh.NO_SERV_PROV, tnhh.DT_END desc NULLS FIRST, nc024_DT_START desc, tnhh.IND_LEGAL_ENTITY ) AS Record_Nr
 FROM   TVMNHHDTL tnhh,
-       CIS.ELIGIBILITY_CONTROL_TABLE telg
+       CIS.ELIGIBILITY_CONTROL_TABLE telg,
+       LU_SAP_FLOCA lsf
 WHERE  tnhh.CD_COMPANY_SYSTEM = ''STW1''
 AND    tnhh.TP_CUST_ACCT_ROLE = ''P''
 AND    tnhh.ST_SERV_PROV      in (''A'',''C'',''E'',''G'',''V'')
 AND    telg.CD_COMPANY_SYSTEM = tnhh.CD_COMPANY_SYSTEM
-AND    telg.NO_PROPERTY       = tnhh.NO_PROPERTY    
-and    tnhh.DT_START  <> nvl(tnhh.DT_END,to_date(''31/12/2099'',''dd/mm/yyyy'')) ) x
+AND    telg.NO_PROPERTY       = tnhh.NO_PROPERTY
+AND    telg.NO_PROPERTY       = lsf.STWPROPERTYNUMBER_PK(+)
+and    tnhh.DT_START         <> nvl(tnhh.DT_END,to_date(''31/12/2099'',''dd/mm/yyyy'')) ) x
 WHERE  Record_Nr = 1';                                  
 
-  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP1', 1, SQL%ROWCOUNT, 'Records Written (054)');
-   
-  --l_job.IND_STATUS := 'END';
-  --P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);  
+  l_orig_ins_tvp054 := SQL%ROWCOUNT;
 
   COMMIT;
+  EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP054_IDX1 REBUILD';
+  EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP054_IDX2 REBUILD';
+  EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP054_IDX3 REBUILD';
+  
+-- V 2.10    
+    l_progress := 'truncating BT table';
 
+   EXECUTE IMMEDIATE 'TRUNCATE TABLE BT_OWC_CUST_SWITCHED_SUPPLIER';
+   EXECUTE IMMEDIATE 'ALTER INDEX IND_BT_OWC_1 UNUSABLE';
+   EXECUTE IMMEDIATE 'ALTER INDEX IND_BT_OWC_2 UNUSABLE';
+  
+  l_progress := 'populating BT table';
+    
+    EXECUTE IMMEDIATE -- Defaulting ST_SERV_PROV to A and DT_END to NULL
+   'INSERT /*+ append */ INTO BT_OWC_CUST_SWITCHED_SUPPLIER 
+   select CD_COMPANY_SYSTEM,	NO_ACCOUNT,	NO_PROPERTY,	 CD_SERVICE_PROV,	NO_COMBINE_054,	NO_SERV_PROV,''A'' ST_SERV_PROV,	DT_START,NULL	DT_END,	NM_LOCAL_SERVICE
+   ,	CD_PROPERTY_USE,	NO_COMBINE_024,	TP_CUST_ACCT_ROLE,	NO_LEGAL_ENTITY,	NC024_DT_START,	NC024_DT_END,	IND_LEGAL_ENTITY,	FG_TOO_HARD,	CD_PROPERTY_USE_ORIG
+   ,	CD_PROPERTY_USE_CURR,	CD_PROPERTY_USE_FUT,	UDPRN,	UPRN,	VOA_REFERENCE,	 SAP_FLOC,	CORESPID,	AGG_NET,	FG_CONSOLIDATED,	FG_TE,	FG_MECOMS_RDY,	NO_PROPERTY_MASTER,	FG_NMM
+   from (
+   select 
+   t1.CD_COMPANY_SYSTEM,	t1.NO_ACCOUNT,	t1.NO_PROPERTY,	trim(t1.CD_SERVICE_PROV) as CD_SERVICE_PROV,	t1.NO_COMBINE_054,	t1.NO_SERV_PROV,	t1.ST_SERV_PROV
+   ,t1.DT_START,	t1.DT_END,	t1.NM_LOCAL_SERVICE,	t1.CD_PROPERTY_USE,	t1.NO_COMBINE_024,	t1.TP_CUST_ACCT_ROLE,	t1.NO_LEGAL_ENTITY,	t1.NC024_DT_START,	t1.NC024_DT_END
+   ,t1.IND_LEGAL_ENTITY,	t1.FG_TOO_HARD,	t3.CD_PROPERTY_USE_ORIG,	t3.CD_PROPERTY_USE_CURR,	t3.CD_PROPERTY_USE_FUT,	t3.UDPRN,	t3.UPRN,	t3.VOA_REFERENCE,	t4.SAPFLOCNUMBER AS SAP_FLOC
+   ,t3.CORESPID,	t3.AGG_NET,	t3.FG_CONSOLIDATED,	t3.FG_TE,	t3.FG_MECOMS_RDY,	t3.NO_PROPERTY_MASTER,	t3.FG_NMM 
+   ,ROW_NUMBER() OVER ( PARTITION BY t1.NO_PROPERTY--, t1.NO_SERV_PROV 
+   ORDER BY t1.NO_PROPERTY, t1.NO_SERV_PROV, t1.DT_END desc NULLS FIRST, t1.DT_START desc, t1.IND_LEGAL_ENTITY ) AS Record_Nr
+   from RECEPTION.TVMNHHDTL t1
+   join LU_SPID_OWC_RETAILER T2 on (T1.NO_PROPERTY = T2.STWPROPERTYNUMBER_PK and trim(T1.CD_SERVICE_PROV) = T2.STWSERVICETYPE
+   AND T1.NO_LEGAL_ENTITY =T2.NO_LEGAL_ENTITY)
+   join CIS.ELIGIBILITY_CONTROL_TABLE t3 on t3.CD_COMPANY_SYSTEM = t1.CD_COMPANY_SYSTEM AND  t3.NO_PROPERTY  = t1.NO_PROPERTY
+   join LU_SAP_FLOCA t4 on    t3.NO_PROPERTY       = t4.STWPROPERTYNUMBER_PK
+   and    t1.DT_START  <> nvl(t1.DT_END,to_date(''31/12/2099'',''dd/mm/yyyy''))) x
+   where Record_Nr = 1';
+    
+    COMMIT;
+    EXECUTE IMMEDIATE 'ALTER INDEX IND_BT_OWC_1 REBUILD';
+    EXECUTE IMMEDIATE 'ALTER INDEX IND_BT_OWC_2 REBUILD';
+    
+-- V 2.10   
+    --delete matching records in BT_TVP054
+    EXECUTE IMMEDIATE
+    'DELETE FROM BT_TVP054
+    WHERE (NO_PROPERTY,TRIM(CD_SERVICE_PROV)) IN (SELECT NO_PROPERTY
+                                              ,TRIM(CD_SERVICE_PROV)
+                                              FROM bt_owc_cust_switched_supplier)';
+    commit;
+-- V 2.10    
+    --INSERT RECORDS FROM BT_OWC_CUST_SWITCHED_SUPPLIER INTO KEYGEN
+    EXECUTE IMMEDIATE
+    'INSERT /*+ append */ INTO BT_TVP054
+    select CD_COMPANY_SYSTEM,	NO_ACCOUNT,	NO_PROPERTY,	 CD_SERVICE_PROV,	NO_COMBINE_054,	NO_SERV_PROV,	ST_SERV_PROV,	DT_START,NULL	DT_END,	NM_LOCAL_SERVICE
+   ,	CD_PROPERTY_USE,	NO_COMBINE_024,	TP_CUST_ACCT_ROLE,	NO_LEGAL_ENTITY,	NC024_DT_START,	NC024_DT_END,	IND_LEGAL_ENTITY,	FG_TOO_HARD,	CD_PROPERTY_USE_ORIG
+   ,	CD_PROPERTY_USE_CURR,	CD_PROPERTY_USE_FUT,	UDPRN,	UPRN,	VOA_REFERENCE,	 SAP_FLOC,	CORESPID,	AGG_NET,	FG_CONSOLIDATED,	FG_TE,	FG_MECOMS_RDY,	NO_PROPERTY_MASTER,	FG_NMM
+   from BT_OWC_CUST_SWITCHED_SUPPLIER';
+   
 
     l_progress := 'truncating METER KeyGen table';
 
     EXECUTE IMMEDIATE 'TRUNCATE TABLE BT_TVP163';
-
+    EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP163_IDX1 UNUSABLE';
+    EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP163_IDX2 UNUSABLE';
+    EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP163_IDX3 UNUSABLE';
+    EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP163_IDX4 UNUSABLE';
+    
     l_progress := 'populating METER KeyGen table';
    
     EXECUTE IMMEDIATE
@@ -200,7 +277,8 @@ WHERE  Record_Nr = 1';
         (cd_company_system, no_account, no_property, cd_service_prov, no_combine_054, no_serv_prov, dt_start_054, dt_end_054,
             nm_local_service, no_combine_034, dt_start_034, dt_start_lr_034, dt_end_034, FG_ADD_SUBTRACT, NO_UTL_EQUIP,NO_EQUIPMENT, 
             no_combine_043, NO_REGISTER, TP_EQUIPMENT, CD_TARIFF, NO_TARIFF_GROUP, NO_TARIFF_SET, PC_USAGE_SPLIT, AM_BILL_MULTIPLIER, 
-            ST_METER_REG_115, no_combine_163_inst, no_property_inst, tvp202_no_serv_prov_inst, IND_Market_Prop_Inst, fg_too_hard, CORESPID, AGG_NET, FG_CONSOLIDATED)
+            ST_METER_REG_115, no_combine_163_inst, no_property_inst, tvp202_no_serv_prov_inst, IND_Market_Prop_Inst, fg_too_hard, CORESPID, AGG_NET, FG_CONSOLIDATED,
+            CD_PROPERTY_USE, FG_TE, FG_MECOMS_RDY, NO_PROPERTY_MASTER, FG_NMM) 
         select  
             DISTINCT 
             t034.cd_company_system,
@@ -240,7 +318,12 @@ WHERE  Record_Nr = 1';
             cast( null as char(1)) fg_too_hard,
             keygen.CORESPID,
             keygen.AGG_NET, 
-            keygen.FG_CONSOLIDATED
+            keygen.FG_CONSOLIDATED,
+            keygen.CD_PROPERTY_USE,
+            keygen.FG_TE, 
+            keygen.FG_MECOMS_RDY,
+            keygen.NO_PROPERTY_MASTER, 
+            keygen.FG_NMM
         FROM CIS.tvp202servproveqp  t202, 
             CIS.tvp163equipinst    t163, 
             CIS.tvp043meterreg     t043, 
@@ -249,9 +332,11 @@ WHERE  Record_Nr = 1';
             (SELECT distinct 
                 no_combine_054, no_account, 
                 no_property, cd_service_prov, no_serv_prov, nm_local_service,
-                dt_start, dt_end, CORESPID, AGG_NET, FG_CONSOLIDATED
+                dt_start, dt_end, CORESPID, AGG_NET, FG_CONSOLIDATED,
+                CD_PROPERTY_USE, FG_TE, FG_MECOMS_RDY, NO_PROPERTY_MASTER, FG_NMM
               FROM BT_TVP054           
-             ) keygen
+             ) keygen,
+             CIS.ELIGIBILITY_CONTROL_TABLE telg
         WHERE 
             -- Get Tariff logical registers for Eligable SPRs. On end dated SPRs, so will the register be.
             t034.NO_COMBINE_054    = keygen.no_combine_054
@@ -270,7 +355,105 @@ WHERE  Record_Nr = 1';
             -- Get Physical Location
         AND T202.NO_COMBINE_163     = t163.NO_COMBINE_163
         AND t202.CD_COMPANY_SYSTEM = t163.cd_company_system
-        and t202.ind_inst_at_prop  = ''Y''';
+        and t202.ind_inst_at_prop  = ''Y''
+            --EXCLUDE ID-OWC = ANGLIAN-W
+        AND telg.CD_COMPANY_SYSTEM = t043.CD_COMPANY_SYSTEM
+        AND telg.NO_PROPERTY       = keygen.NO_PROPERTY
+        AND telg.ID_OWC            NOT IN (''ANGLIAN-W'')
+        union -- V 2.12 
+        select cd_company_system, no_account, no_property, cd_service_prov, no_combine_054, no_serv_prov, dt_start_054, dt_end_054,
+            nm_local_service, no_combine_034, dt_start_034, dt_start_lr_034, dt_end_034, FG_ADD_SUBTRACT, NO_UTL_EQUIP,NO_EQUIPMENT, 
+            no_combine_043, NO_REGISTER, TP_EQUIPMENT, CD_TARIFF, NO_TARIFF_GROUP, NO_TARIFF_SET, PC_USAGE_SPLIT, AM_BILL_MULTIPLIER, 
+            ST_METER_REG_115, no_combine_163_inst, no_property_inst, tvp202_no_serv_prov_inst, IND_Market_Prop_Inst, fg_too_hard, CORESPID, AGG_NET, FG_CONSOLIDATED,
+            CD_PROPERTY_USE, FG_TE, FG_MECOMS_RDY, NO_PROPERTY_MASTER, FG_NMM 
+        from (
+        select  
+            DISTINCT 
+            t034.cd_company_system,
+            keygen.no_account,
+            keygen.no_property,
+            keygen.cd_service_prov,
+            keygen.no_combine_054,
+            keygen.no_serv_prov,
+            keygen.dt_start as dt_start_054,
+            keygen.dt_end as dt_end_054,
+            keygen.nm_local_service,
+            t034.no_combine_034,
+            t034.dt_start as dt_start_034,
+            t034.DT_START_LR as dt_start_lr_034,
+            t034.dt_end   as dt_end_034,
+            t034.FG_ADD_SUBTRACT,
+            t063.NO_UTL_EQUIP,
+            t043.NO_EQUIPMENT,
+            t043.no_combine_043,
+            t043.NO_REGISTER,
+            t034.TP_EQUIPMENT,
+            t034.CD_TARIFF,
+            t034.NO_TARIFF_GROUP,
+            t034.NO_TARIFF_SET,
+            t034.PC_USAGE_SPLIT,
+            t043.AM_BILL_MULTIPLIER,
+            t043.ST_METER_REG_115,
+            t202.no_combine_163 as no_combine_163_inst,
+            t202.no_property as no_property_inst,
+            t202.no_serv_prov as tvp202_no_serv_prov_inst, 
+            case when t202.no_property <> keygen.no_property
+                 then NVL((select ''Y'' from BT_TVP054 m          
+                    WHERE m.NO_PROPERTY = t202.no_property
+                    AND ROWNUM = 1),''N'')
+                else ''Y''
+            end as IND_Market_Prop_Inst,
+            cast( null as char(1)) fg_too_hard,
+            keygen.CORESPID,
+            keygen.AGG_NET, 
+            keygen.FG_CONSOLIDATED,
+            keygen.CD_PROPERTY_USE,
+            keygen.FG_TE, 
+            keygen.FG_MECOMS_RDY,
+            keygen.NO_PROPERTY_MASTER, 
+            keygen.FG_NMM
+            ,ROW_NUMBER() OVER (PARTITION BY keygen.NO_PROPERTY
+             ORDER BY keygen.NO_PROPERTY, T2.STWSERVICETYPE,  keygen.dt_end desc NULLS FIRST,  keygen.dt_start desc ) AS Record_Nr
+        FROM CIS.tvp202servproveqp  t202, 
+            CIS.tvp163equipinst    t163, 
+            CIS.tvp043meterreg     t043, 
+            CIS.tvp034instregassgn t034,
+            cis.tvp063equipment    t063,
+            (SELECT distinct 
+                no_combine_054, no_account, 
+                no_property, cd_service_prov, no_serv_prov, nm_local_service,
+                dt_start, dt_end, CORESPID, AGG_NET, FG_CONSOLIDATED,
+                CD_PROPERTY_USE, FG_TE, FG_MECOMS_RDY, NO_PROPERTY_MASTER, FG_NMM
+              FROM BT_TVP054           
+             ) keygen,
+             CIS.ELIGIBILITY_CONTROL_TABLE telg,
+           LU_SPID_OWC_RETAILER T2 
+        WHERE 
+            -- Get Tariff logical registers for Eligable SPRs. On end dated SPRs, so will the register be.
+            t034.NO_COMBINE_054    = keygen.no_combine_054
+            -- LU joining key
+       and (keygen.NO_PROPERTY = T2.STWPROPERTYNUMBER_PK and trim(keygen.CD_SERVICE_PROV) = T2.STWSERVICETYPE)    
+--        AND ( t034.DT_END IS NULL or (keygen.dt_end is not null and t034.DT_END = keygen.dt_end) )
+        --AND t034.CD_COMPANY_SYSTEM = ''STW1''
+            -- Get Physical Meter using register
+        AND t043.NO_COMBINE_043    = t034.NO_COMBINE_043
+        AND t043.CD_COMPANY_SYSTEM = t034.cd_company_system
+            -- get Equipment Info
+        AND t063.NO_EQUIPMENT      = t043.NO_EQUIPMENT
+        AND t063.CD_COMPANY_SYSTEM = t043.cd_company_system
+            -- Get Equipment Locations (logical and physical)
+        AND T163.NO_EQUIPMENT      = t043.NO_EQUIPMENT
+        --AND T163.ST_EQUIP_INST     = ''A''
+        AND T163.CD_COMPANY_SYSTEM = t043.cd_company_system
+            -- Get Physical Location
+        AND T202.NO_COMBINE_163     = t163.NO_COMBINE_163
+        AND t202.CD_COMPANY_SYSTEM = t163.cd_company_system
+        and t202.ind_inst_at_prop  = ''Y''
+            --EXCLUDE ID-OWC = ANGLIAN-W
+        AND telg.CD_COMPANY_SYSTEM = t043.CD_COMPANY_SYSTEM
+        AND telg.NO_PROPERTY       = keygen.NO_PROPERTY
+        AND telg.ID_OWC            NOT IN (''ANGLIAN-W''))x
+        where Record_Nr = 1';
 
 
     P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP1', 1, SQL%ROWCOUNT, 'Records Written (163)');
@@ -279,7 +462,192 @@ WHERE  Record_Nr = 1';
     P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);  
 
     COMMIT;
+    EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP163_IDX1 REBUILD';
+    EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP163_IDX2 REBUILD';
+    EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP163_IDX3 REBUILD';
+    EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP163_IDX4 REBUILD';
+
+  -- Write any missing service provisions from master write
+
+  l_progress := 'INSERT BT_MISS_AG_SC';
   
+  EXECUTE IMMEDIATE 'TRUNCATE TABLE BT_MISS_AG_SC'; 
+    
+  INSERT /*+ append */ INTO BT_MISS_AG_SC
+   (CD_COMPANY_SYSTEM, NO_ACCOUNT, NO_PROPERTY, CD_SERVICE_PROV, NO_COMBINE_054, NO_SERV_PROV, DT_START, DT_END,
+   NM_LOCAL_SERVICE, CD_PROPERTY_USE, NO_COMBINE_024, TP_CUST_ACCT_ROLE, NO_LEGAL_ENTITY, nc024_DT_START, nc024_DT_END,
+   IND_LEGAL_ENTITY, FG_TOO_HARD, CD_PROPERTY_USE_ORIG,
+   CD_PROPERTY_USE_CURR, CD_PROPERTY_USE_FUT, UDPRN, UPRN, VOA_REFERENCE, SAP_FLOC, CORESPID, AGG_NET, FG_CONSOLIDATED,
+   FG_TE, FG_MECOMS_RDY, NO_PROPERTY_MASTER, FG_NMM) 
+   SELECT 
+   CD_COMPANY_SYSTEM, NO_ACCOUNT, NO_PROPERTY, CD_SERVICE_PROV, NO_COMBINE_054, NO_SERV_PROV, DT_START, DT_END,
+   NM_LOCAL_SERVICE, CD_PROPERTY_USE, NO_COMBINE_024, TP_CUST_ACCT_ROLE, NO_LEGAL_ENTITY, nc024_DT_START, nc024_DT_END,
+   IND_LEGAL_ENTITY, FG_TOO_HARD, CD_PROPERTY_USE_ORIG,
+   CD_PROPERTY_USE_CURR, CD_PROPERTY_USE_FUT, UDPRN, UPRN, VOA_REFERENCE, SAP_FLOC, CORESPID, AGG_NET, FG_CONSOLIDATED,
+   FG_TE, FG_MECOMS_RDY, NO_PROPERTY_MASTER, FG_NMM   
+   FROM   BT_TVP054 tb1
+   WHERE ( NO_PROPERTY_MASTER, CD_SERVICE_PROV) IN (SELECT NO_PROPERTY_MASTER, CD_SERVICE_PROV
+                                                    FROM   BT_TVP054 tb1
+                                                    WHERE  NO_PROPERTY_MASTER IS NOT NULL
+                                                    MINUS
+                                                    SELECT NO_PROPERTY_MASTER, CD_SERVICE_PROV
+                                                    FROM   BT_TVP054 tb2
+                                                    WHERE  NO_PROPERTY IN (SELECT NO_PROPERTY_MASTER
+                                                                           FROM   BT_TVP054 tb1
+                                                                           WHERE  NO_PROPERTY_MASTER IS NOT NULL) 
+                                                    );   
+  COMMIT;
+ 
+  -- remove accounts which have a aggregated account
+
+  l_progress := 'DELETE FROM BT_TVP054 Accounts which are Aggregated';
+   
+--**** v2.09 new AGG_NET logic for Aggregates and networks
+  DELETE FROM BT_TVP054
+--  WHERE  NO_PROPERTY_MASTER IS NOT NULL;
+  WHERE AGG_NET = 'A' AND NO_PROPERTY <> NO_PROPERTY_MASTER AND NO_PROPERTY_MASTER IS NOT NULL;
+  
+  l_agg_del_tvp054 := SQL%ROWCOUNT;
+
+  COMMIT;
+  
+--**** v2.09 - second insert no longer required in new logic
+--  swap accounts for aggregated MASTER HEAD accounts data
+
+--   l_progress := 'INSERT BT_TVP054 Agregate Accounts';
+--   
+--  EXECUTE IMMEDIATE
+--  'INSERT /*+ append */ INTO BT_TVP054
+--   (CD_COMPANY_SYSTEM, NO_ACCOUNT, NO_PROPERTY, CD_SERVICE_PROV, NO_COMBINE_054, NO_SERV_PROV, DT_START, DT_END,
+--   NM_LOCAL_SERVICE, CD_PROPERTY_USE, NO_COMBINE_024, TP_CUST_ACCT_ROLE, NO_LEGAL_ENTITY, nc024_DT_START, nc024_DT_END,
+--   IND_LEGAL_ENTITY, 
+--   FG_TOO_HARD, CD_PROPERTY_USE_ORIG,
+--   CD_PROPERTY_USE_CURR, CD_PROPERTY_USE_FUT, UDPRN, UPRN, VOA_REFERENCE, SAP_FLOC, CORESPID, AGG_NET, FG_CONSOLIDATED,
+--   FG_TE, FG_MECOMS_RDY, NO_PROPERTY_MASTER, FG_NMM)  
+--  SELECT CD_COMPANY_SYSTEM,
+--       NO_ACCOUNT,
+--       NO_PROPERTY,
+--       CD_SERVICE_PROV,       
+--       NO_COMBINE_054,
+--       NO_SERV_PROV, 
+--       DT_START,
+--       DT_END,
+--       NM_LOCAL_SERVICE,
+--       CD_PROPERTY_USE,
+--       NO_COMBINE_024,
+--       TP_CUST_ACCT_ROLE,
+--       NO_LEGAL_ENTITY,
+--       nc024_DT_START,
+--       nc024_DT_END,
+--       IND_LEGAL_ENTITY,
+--       FG_TOO_HARD,
+--       CD_PROPERTY_USE_ORIG,
+--	     CD_PROPERTY_USE_CURR, 
+--	     CD_PROPERTY_USE_FUT,
+--	     UDPRN,
+--	     UPRN,
+--       VOA_REFERENCE,
+--       SAP_FLOC,
+--       CORESPID,
+--       AGG_NET, 
+--       FG_CONSOLIDATED,
+--       FG_TE, 
+--       FG_MECOMS_RDY,
+--       NO_PROPERTY_MASTER, 
+--       FG_NMM
+--FROM       
+--(SELECT  tnhh.CD_COMPANY_SYSTEM,
+--       tnhh.NO_ACCOUNT,
+--       tnhh.NO_PROPERTY,
+--       trim(tnhh.CD_SERVICE_PROV) as CD_SERVICE_PROV,       
+--       tnhh.NO_COMBINE_054,
+--       tnhh.NO_SERV_PROV, 
+--       tnhh.DT_START,
+--       tnhh.DT_END,
+--       tnhh.NM_LOCAL_SERVICE,
+--       tnhh.CD_PROPERTY_USE,
+--       tnhh.NO_COMBINE_024,
+--       tnhh.TP_CUST_ACCT_ROLE,
+--       tnhh.NO_LEGAL_ENTITY,
+--       tnhh.nc024_DT_START,
+--       tnhh.nc024_DT_END,
+--       tnhh.IND_LEGAL_ENTITY,
+--       tnhh.FG_TOO_HARD,
+--       telg.CD_PROPERTY_USE_ORIG,
+--	     telg.CD_PROPERTY_USE_CURR, 
+--	     telg.CD_PROPERTY_USE_FUT,
+--	     telg.UDPRN,
+--	     telg.UPRN,
+--       telg.VOA_REFERENCE,
+--       lsf.SAPFLOCNUMBER AS SAP_FLOC,
+--       telg.CORESPID, 
+--       telg.AGG_NET, 
+--       telg.FG_CONSOLIDATED,
+--       telg.FG_TE, 
+--       telg.FG_MECOMS_RDY,
+--       telg.NO_PROPERTY_MASTER, 
+--       telg.FG_NMM,
+--       ROW_NUMBER() OVER ( PARTITION BY tnhh.NO_PROPERTY, tnhh.NO_SERV_PROV ORDER BY tnhh.NO_PROPERTY, tnhh.NO_SERV_PROV, tnhh.DT_END desc NULLS FIRST, nc024_DT_START desc, tnhh.IND_LEGAL_ENTITY ) AS Record_Nr
+--FROM   TVMNHHDTL tnhh,
+--       CIS.ELIGIBILITY_CONTROL_TABLE telg,
+--       LU_SAP_FLOCA lsf
+--WHERE  tnhh.CD_COMPANY_SYSTEM = ''STW1''
+--AND    tnhh.TP_CUST_ACCT_ROLE = ''P''
+--AND    tnhh.ST_SERV_PROV      in (''A'',''C'',''E'',''G'',''V'')
+--AND    telg.CD_COMPANY_SYSTEM = tnhh.CD_COMPANY_SYSTEM
+--AND    telg.NO_PROPERTY       = tnhh.NO_PROPERTY
+--AND    telg.NO_PROPERTY_MASTER = telg.NO_PROPERTY
+--AND    telg.NO_PROPERTY_MASTER is not null
+--AND    telg.NO_PROPERTY_MASTER = lsf.STWPROPERTYNUMBER_PK(+)
+--and    tnhh.DT_START         <> nvl(tnhh.DT_END,to_date(''31/12/2099'',''dd/mm/yyyy'')) ) x
+--WHERE  Record_Nr = 1';                                  
+--
+--   COMMIT;
+--  l_agg_tvp054 := SQL%ROWCOUNT;
+    l_agg_tvp054 := 0; 
+  
+  -- remove from BT_TVP054 domestic properties (was intilally required to build BT_TVP163)
+
+   l_progress := 'DELETE FROM BT_TVP054 ';
+    
+   DELETE FROM BT_TVP054
+   WHERE  (   CORESPID IS NULL
+           OR FG_NMM = 'Y' );
+   l_dom_delete := SQL%ROWCOUNT;
+
+  COMMIT;
+   
+  EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP054_IDX1 REBUILD';
+  EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP054_IDX2 REBUILD';
+  EXECUTE IMMEDIATE 'ALTER INDEX BT_TVP054_IDX3 REBUILD';
+
+--  -- V 2.04 
+--  EXECUTE IMMEDIATE 'update BT_TVP054 T1
+--  set T1.DT_END = null
+--  where T1.NO_PROPERTY = (select T2.STWPROPERTYNUMBER_PK 
+--  from LU_SPID_OWC_RETAILER T2
+--  where (T1.NO_PROPERTY = T2.STWPROPERTYNUMBER_PK 
+--  OR T1.NO_ACCOUNT = T2.STWACCOUNTNUMBER)
+--  and T1.CD_SERVICE_PROV = T2.STWSERVICETYPE
+--  )';
+--
+--   -- V 2.04 
+--   EXECUTE IMMEDIATE 'update BT_TVP163 T1
+--   set T1.DT_END_054 = null
+--   where T1.NO_PROPERTY = (select T2.STWPROPERTYNUMBER_PK 
+--   from LU_SPID_OWC_RETAILER T2
+--   where (T1.NO_PROPERTY = T2.STWPROPERTYNUMBER_PK 
+--   OR T1.NO_ACCOUNT = T2.STWACCOUNTNUMBER)
+--   and T1.CD_SERVICE_PROV = T2.STWSERVICETYPE
+--   )';
+   
+  l_progress := 'Add Reconciliation Counts ';
+  
+   --CP1	number of rows on BT_TVO54 
+
+   l_orig_ins_tvp054 := l_orig_ins_tvp054 - l_dom_delete + l_agg_tvp054 - l_agg_del_tvp054;      
+   P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP1', 1, l_orig_ins_tvp054, 'Records Written (054)');
+    
    --CP22	number of Legal Entities
 
   SELECT COUNT( DISTINCT NO_LEGAL_ENTITY)

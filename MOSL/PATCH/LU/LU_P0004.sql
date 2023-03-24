@@ -6,7 +6,7 @@
 -- FILENAME       		: 	LU_P00004.sql
 --
 --
--- Subversion $Revision: 4023 $	
+-- Subversion $Revision: 5194 $	
 --
 -- CREATED        		: 	03/03/2016
 --
@@ -17,41 +17,34 @@
 --
 ---------------------------- Modification History ----------------------------------------------------------
 --
--- Version     		Date            Author         	Description
--- ---------      	----------      -------         ------------------------------------------------
--- V0.01		    25/02/2016		N.Henderson		LU_Tariff columns renamed to MOSL column names
---													LU_TARIFF_SPECIAL_AGREEMENTS columns renamed
---													to MOSL column names
---													LU_SERVICE_CATEGORY columns renamed to MOSL 
---													column names and data has been added as required.
---													
---							
---
---
---
---
+-- Version     Date            Author       Description
+-- ---------   ----------      -------      ------------------------------------------------
+-- V0.01		   25/02/2016		   N.Henderson	LU_Tariff columns renamed to MOSL column names
+--													                LU_TARIFF_SPECIAL_AGREEMENTS columns renamed
+--													                to MOSL column names
+--													                LU_SERVICE_CATEGORY columns renamed to MOSL 
+--													                column names and data has been added as required.
+-- V0.02       17/08/2016      S.Badhan     I-320. LU_TARIFF AND LU_SERVICE_COMP_CHARGES no longer exist. Commented out.
 -- 
 ------------------------------------------------------------------------------------------------------------
 
 --Patch Script ==============
-alter table lu_tariff rename column TARIFF_CODE to TARIFFCODE_PK;
-alter table lu_tariff rename column SERVICE_COMPONENT_CODE to SERVICECOMPONENTTYPE;
-alter table lu_tariff rename column TARIFF_EFFECTIVE_FROM_DATE to TARIFFEFFECTIVEFROMDATE;
-alter table lu_tariff rename column TARIFF_NAME to TARIFFNAME;
-alter table lu_tariff rename column TARIFF_STATUS to TARIFFSTATUS;
-alter table lu_tariff rename column TARIFF_AUTHORISATION_CODE to TARIFFAUTHCODE;
-alter table lu_tariff rename column LEGACY_TARIFF_EFFECT_FROM_DATE to TARIFFLEGACYEFFECTIVEFROMDATE;
+--alter table lu_tariff rename column TARIFF_CODE to TARIFFCODE_PK;
+--alter table lu_tariff rename column SERVICE_COMPONENT_CODE to SERVICECOMPONENTTYPE;
+--alter table lu_tariff rename column TARIFF_EFFECTIVE_FROM_DATE to TARIFFEFFECTIVEFROMDATE;
+--alter table lu_tariff rename column TARIFF_NAME to TARIFFNAME;
+--alter table lu_tariff rename column TARIFF_STATUS to TARIFFSTATUS;
+--alter table lu_tariff rename column TARIFF_AUTHORISATION_CODE to TARIFFAUTHCODE;
+--alter table lu_tariff rename column LEGACY_TARIFF_EFFECT_FROM_DATE to TARIFFLEGACYEFFECTIVEFROMDATE;
 
-
-alter table LU_TARIFF_SPECIAL_AGREEMENTS rename column CD_TARIFF to TARIFFCODE;
+--alter table LU_TARIFF_SPECIAL_AGREEMENTS rename column CD_TARIFF to TARIFFCODE;
 alter table LU_TARIFF_SPECIAL_AGREEMENTS rename column SERVICE_PROVISION to SERVICECOMPONENTTYPE;
 
-
-alter table LU_SERVICE_CATEGORY rename column service_component_type to SERVICECOMPONENTTYPE;
-alter table LU_SERVICE_CATEGORY rename column SERVICE_PROVISION_DESC to SERVICECOMPONENTDESC;
+--alter table LU_SERVICE_CATEGORY rename column service_component_type to SERVICECOMPONENTTYPE;
+--alter table LU_SERVICE_CATEGORY rename column SERVICE_PROVISION_DESC to SERVICECOMPONENTDESC;
 update LU_SERVICE_CATEGORY set SERVICECOMPONENTDESC='Water Charge Adjustment' where servicecomponenttype='WCA';
-update LU_SERVICE_CATEGORY set SERVICECOMPONENTDESC='Sewerage Charge Adjustment' where servicecomponenttype='SCA';
-alter table LU_SERVICE_CATEGORY drop column TARGET_SERV_PROV_DESC;
+UPDATE LU_SERVICE_CATEGORY SET SERVICECOMPONENTDESC='Sewerage Charge Adjustment' WHERE servicecomponenttype='SCA';
+--alter table LU_SERVICE_CATEGORY drop column TARGET_SERV_PROV_DESC;
 truncate table LU_SERVICE_CATEGORY;
 --REM INSERTING into LU_SERVICE_CATEGORY
 Insert into LU_SERVICE_CATEGORY (SUPPLY_POINT_CODE,SUPPLY_POINT_DESC,SERVICECOMPONENTDESC,TARGET_SERV_PROV_CODE,SERVICECOMPONENTTYPE) values ('W','Water Service','Metered Potable Water','W','MPW');

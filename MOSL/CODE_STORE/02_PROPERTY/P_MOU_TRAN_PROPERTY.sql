@@ -9,7 +9,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_PROPERTY.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5284 $
 --
 -- CREATED        : 25/02/2016
 --
@@ -22,6 +22,9 @@ IS
 --
 -- Version     Date        Author     Description
 -- ---------   ----------  -------    ---------------------------------------------------
+-- V 1.05      26/08/2016  S.Badhan   I-320. Lookup SAP_FLOC if currently null.
+-- V 1.04      06/07/2016  S.Badhan   Set rateable value from highest value.
+-- V 1.03      29/06/1016  L.Smith    Performance changes
 -- V 1.02      22/04/2016  S.Badhan   Update to conditional setting of VOA BA Reference and
 --                                    reason code after MOSL document update.
 -- V 1.01      16/03/2016  S.Badhan   Changed to use new table name LU_CONSTRUCTION
@@ -47,6 +50,8 @@ IS
   l_mo                          MO_ELIGIBLE_PREMISES%ROWTYPE; 
   l_site                        LU_CONSTRUCTION_SITE%ROWTYPE; 
   l_hlt                         LU_PUBHEALTHRESITE%ROWTYPE; 
+  l_floc                        LU_SAP_FLOCA%ROWTYPE;   
+  l_alg                         CIS.TVP771SPRBLALGITEM%ROWTYPE;
   l_no_row_read                 MIG_CPLOG.RECON_MEASURE_TOTAL%TYPE;
   l_no_row_insert               MIG_CPLOG.RECON_MEASURE_TOTAL%TYPE;
   l_no_row_dropped              MIG_CPLOG.RECON_MEASURE_TOTAL%TYPE;  
@@ -66,16 +71,11 @@ CURSOR cur_prop (p_no_property_start   BT_TVP054.NO_PROPERTY%TYPE,
             t054.VOA_REFERENCE,
             t054.SAP_FLOC,
             t054.UPRN,
-            t054.CORESPID,
-            alg.NO_VALUE
-     FROM   BT_TVP054 t054,
-            CIS.TVP771SPRBLALGITEM alg
+            t054.CORESPID
+     FROM   BT_TVP054 t054
      WHERE  t054.NO_PROPERTY BETWEEN p_no_property_start AND p_no_property_end 
-     AND    t054.CD_COMPANY_SYSTEM = c_company_cd
-     AND    alg.CD_COMPANY_SYSTEM (+) = t054.CD_COMPANY_SYSTEM
-     AND    alg.NO_COMBINE_054    (+) = t054.NO_COMBINE_054
-     AND    alg.CD_BILL_ALG_ITEM  (+) = 'RV'
      order by t054.NO_PROPERTY, t054.DT_START desc;
+
                             
 TYPE tab_property IS TABLE OF cur_prop%ROWTYPE INDEX BY PLS_INTEGER;
 t_prop  tab_property;
@@ -184,13 +184,39 @@ BEGIN
         IF t_prop(i).UPRN IS NULL THEN
            l_mo.UPRNREASONCODE := 'OT';
         END IF;
+
+        BEGIN 
+           SELECT MAX(NO_VALUE)
+           INTO   l_alg.NO_VALUE   
+           FROM   BT_TVP054              t054,
+                  CIS.TVP771SPRBLALGITEM alg
+           WHERE  t054.NO_PROPERTY       = t_prop(i).NO_PROPERTY
+           AND    t054.CD_COMPANY_SYSTEM = 'STW1'
+           AND    alg.CD_COMPANY_SYSTEM  = t054.CD_COMPANY_SYSTEM
+           AND    alg.NO_COMBINE_054     = t054.NO_COMBINE_054
+           AND    alg.CD_BILL_ALG_ITEM   = 'RV';
+        EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+             l_alg.NO_VALUE := NULL;
+        END;
+        l_mo.RATEABLEVALUE := l_alg.NO_VALUE;
         
-        -- fix for testing
+        -- Get SAPFLOCNUMBER if null
         
         IF t_prop(i).SAP_FLOC IS NULL THEN
-           t_prop(i).SAP_FLOC := t_prop(i).NO_PROPERTY;
+           l_progress := 'SELECT LU_SAP_FLOCA ';
+           BEGIN
+              SELECT SAPFLOCNUMBER
+              INTO   l_floc.SAPFLOCNUMBER
+              FROM   LU_SAP_FLOCA
+              WHERE  STWPROPERTYNUMBER_PK  = t_prop(i).NO_PROPERTY;
+           EXCEPTION
+           WHEN NO_DATA_FOUND THEN
+                l_floc.SAPFLOCNUMBER := NULL;
+           END;
+           t_prop(i).SAP_FLOC := l_floc.SAPFLOCNUMBER;
         END IF;
-      
+        
         l_rec_written := TRUE;
         BEGIN 
           INSERT INTO MO_ELIGIBLE_PREMISES
@@ -198,7 +224,7 @@ BEGIN
           OCCUPENCYSTATUS, VOABAREFERENCE, VOABAREFRSNCODE, BUILDINGWATERSTATUS, NONPUBHEALTHRELSITE, 
           NONPUBHEALTHRELSITEDSC, PUBHEALTHRELSITEARR, SECTION154, UPRN, UPRNREASONCODE)
           VALUES
-          (t_prop(i).NO_PROPERTY, t_prop(i).CORESPID, NULL, t_prop(i).SAP_FLOC, t_prop(i).NO_VALUE, t_prop(i).CD_PROPERTY_USE,
+          (t_prop(i).NO_PROPERTY, t_prop(i).CORESPID, NULL, t_prop(i).SAP_FLOC, l_mo.RATEABLEVALUE, t_prop(i).CD_PROPERTY_USE,
           l_mo.OCCUPENCYSTATUS, t_prop(i).VOA_REFERENCE, l_mo.VOABAREFRSNCODE, l_site.BUILDINGWATERSTATUS, l_hlt.NONPUBHEALTHRELSITE, 
           l_hlt.NONPUBHEALTHRELSITEDSC, l_hlt.PUBHEALTHRELSITEARR, 0, t_prop(i).UPRN, l_mo.UPRNREASONCODE);
         EXCEPTION 

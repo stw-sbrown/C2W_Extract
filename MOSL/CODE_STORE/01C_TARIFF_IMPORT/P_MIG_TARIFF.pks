@@ -7,7 +7,7 @@ PACKAGE P_MIG_TARIFF AS
 --
 -- FILENAME       : P_MIG_TARIFF.pks
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 4900 $
 --
 -- CREATED        : 3/mar/2016
 --
@@ -62,8 +62,7 @@ procedure P_MOU_TRAN_TARIFF_RUN;
 
 g_err_tol number := 1;
 G_ERR_ROWS NUMBER := 0;
-g_state varchar2(10) := 'Draft';
+g_state varchar2(10) := 'Verified';
 END P_MIG_TARIFF;
 /
-
 exit;

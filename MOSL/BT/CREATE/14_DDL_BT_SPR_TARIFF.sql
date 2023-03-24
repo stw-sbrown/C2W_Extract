@@ -1,8 +1,15 @@
 --Create table BT_SPR_TARIFF 
 --N.Henderson - 12/04/2016
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5194 $
 --Attempt to drop the table first. Will generate warnings if does not
 --exist but can be ignored.
+
+--------------------------- Modification History ---------------------------------------   
+--
+-- Version     Date        Author     Description
+-- ---------   ----------  -------    ---------------------------------------------------
+-- V 0.01      15/07/2016  S.Badhan   I-301. Change BT_SPR_TARIFF_IDX1 to be just on NO_COMBINE_054
+-----------------------------------------------------------------------------------------
 
 --DROP TABLE BT_SPR_TARIFF PURGE;
 

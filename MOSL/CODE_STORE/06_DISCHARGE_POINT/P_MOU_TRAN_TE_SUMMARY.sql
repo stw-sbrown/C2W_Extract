@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_TE_SUMMARY.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5284 $
 --
 -- CREATED        : 10/05/2016
 --
@@ -23,6 +23,14 @@ IS
 -- Version     Date        Author     Description
 -- ---------   ----------  --------   --------------------------------------------------
 -- V 0.01      13/05/2016  L.Smith    Initial version
+--
+-- V 0.02      25/05/2016  L. Smith   Added new columns to cross balance MO and STW calculations
+-- V 0.03      01/06/2016  L. Smith   Do not process teaccess.cus_data rows for no_iwcs where an 
+--                                    error has already been written to mig_errorlog.
+-- V 0.04      07/06/2016  L. Smith   Column rounding
+-- V 0.05      01/07/2016  L. Smith   Populate new column SEWERAGEVOLUMEADJMENTHOD
+-- V 0.06      07/07/2106  L. Smith   Use parameter no_batch in cursor
+-- V 0.07      28/07/2016  L. Smith   I322 
 -----------------------------------------------------------------------------------------
 
   c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_TE_SUMMARY';
@@ -42,31 +50,34 @@ IS
   l_water_sp                    NUMBER(9);
   l_sewage_sp                   NUMBER(9);
   l_le                          NUMBER(9);
+  l_mo_stw_balanced_yn          VARCHAR2(1);
   l_rec_written                 BOOLEAN;
+  l_svam                        VARCHAR2(20);
+  l_no_batch                    mig_errorlog.no_batch%TYPE := no_batch;
 
 -- SELECT Trade Effluent working data migrated from the customer database
 CURSOR cur_te_summary
     IS
 SELECT 
-           CASE WHEN INSTR(
-                           TRANSLATE(
-                                     SUBSTR(cd.no_account,
-                                            1, 
-                                            DECODE(INSTR(cd.no_account,'-'),0,LENGTH(cd.no_account),INSTR(cd.no_account,'-')-1)
-                                           ),
-                                    'ABCDEFGHIJKLMNOPQRSTUVWXYZ*',
-                                    '                           '
-                                    ),
-                           ' ') > 0 THEN
-                  -- Set to NULL as no_account still contains invalid characters after the hyphen and subsequent data has been removed
-                  NULL
-                ELSE
-                  -- Removes the hyphen and any subsequent data
-                  SUBSTR(cd.no_account,
-                         1, 
-                         DECODE(INSTR(cd.no_account,'-'),0,LENGTH(cd.no_account),INSTR(cd.no_account,'-')-1)
-                        )
-           END AS no_account,
+       CASE WHEN INSTR(
+                       TRANSLATE(
+                                 SUBSTR(cd.no_account,
+                                        1, 
+                                        DECODE(INSTR(cd.no_account,'-'),0,LENGTH(cd.no_account),INSTR(cd.no_account,'-')-1)
+                                       ),
+                                 'ABCDEFGHIJKLMNOPQRSTUVWXYZ*',
+                                 '                           '
+                                ),
+                       ' ') > 0 THEN
+              -- Set to NULL as no_account still contains invalid characters after the hyphen and subsequent data has been removed
+              NULL
+            ELSE
+              -- Removes the hyphen and any subsequent data
+              SUBSTR(cd.no_account,
+                     1, 
+                     DECODE(INSTR(cd.no_account,'-'),0,LENGTH(cd.no_account),INSTR(cd.no_account,'-')-1)
+                    )
+       END AS no_account,
        cd.no_iwcs,
        NVL(working_data.working_rows,0) no_working_rows,
        cd.district,
@@ -106,10 +117,24 @@ SELECT
        extref.no_property,
        extref.supply_point_code,
        extref.no_legal_entity,
-       NULL te_volume,
-       NULL ouw_volume,
-       NULL te_days,
-       NULL ouw_days
+       ROUND(working_data.te_vol,0)                  te_vol,
+       ROUND(working_data.te_days,0)                 te_days,
+       ROUND(working_data.ms_vol,0)                  ouw_vol,
+       ROUND(working_data.ouw_days,0)                ouw_days,
+       ROUND(working_data.fa_vol,0)                  fa_vol,
+       ROUND(working_data.da_vol,0)                  da_vol,
+       ROUND(working_data.pa_perc,2)                 pa_perc,
+       ROUND(working_data.mdvol_for_ws_meter_perc,2) mdvol_for_ws_meter_perc,
+       ROUND(working_data.mdvol_for_te_meter_perc,2) mdvol_for_te_meter_perc,
+       ROUND(working_data.calc_discharge_vol,0)      calc_discharge_vol,
+       ROUND(working_data.sub_meter,0)               sub_meter,
+       ROUND(working_data.ws_vol,0)                  ws_vol,
+       ROUND(working_data.mo_calc,0)                 mo_calc,
+       ROUND(working_data.stw_calc,0)                stw_calc,
+       da_only,
+       da_exists,
+       te_contributing,
+       ms_contributing
   FROM teaccess.cus_data cd
   LEFT OUTER JOIN (
      SELECT *
@@ -124,13 +149,150 @@ SELECT
   ) sitedata
     ON cd.no_iwcs = sitedata.no_iwcs
   LEFT OUTER JOIN (
-      SELECT no_iwcs, 
-      COUNT(*) working_rows
-        FROM bt_te_working
-        GROUP BY no_iwcs
+    SELECT -- Calculates a yearly Summary from the period summaries
+           no_iwcs,
+           SUM(working_rows)             working_rows,
+           SUM(te_vol)                   te_vol,
+           MAX(te_days)                  te_days,
+           SUM(ms_vol)                   ms_vol,
+           MAX(ouw_days)                 ouw_days,
+           SUM(te_vol_filtered)          te_vol_filtered,
+           MAX(mdvol_for_ws_meter_perc)  mdvol_for_ws_meter_perc,
+           MAX(mdvol_for_te_meter_perc)  mdvol_for_te_meter_perc,
+           SUM(ws_vol)                   ws_vol,
+           SUM(calc_discharge_vol)       calc_discharge_vol,
+           SUM(sub_meter)                sub_meter,
+           SUM(da_vol)                   da_vol,
+           SUM(fa_vol)                   fa_vol,
+           MAX(pa_perc)                  pa_perc,
+           SUM(mo_calc)                  mo_calc,
+           SUM(stw_calc)                 stw_calc,
+           MIN(da_only)                  da_only,
+           MAX(da_exists)                da_exists,
+           MAX(te_contributing)          te_contributing,
+           MAX(ms_contributing)          ms_contributing
+      FROM (SELECT -- Performs a summary at Period level
+                   no_iwcs,
+                   period,
+                   working_rows,
+                   te_vol,
+                   te_days,
+                   ms_vol,
+                   ouw_days,
+                   te_vol_filtered,
+                   mdvol_for_ws_meter_perc,
+                   mdvol_for_te_meter_perc,
+                   ws_vol,
+                   calc_discharge_vol,
+                   sub_meter,
+                   da_vol,
+                   fa_vol,
+                   pa_perc,
+                   (te_vol_filtered - (te_vol_filtered * pa_perc)) +
+                     (ws_vol - (ws_vol * pa_perc)) +
+                     (calc_discharge_vol - (calc_discharge_vol * pa_perc)) -
+                     (sub_meter - (sub_meter * pa_perc)) -
+                     (da_vol - (da_vol * pa_perc)) -
+                     (fa_vol - (fa_vol * pa_perc))
+                   stw_calc,
+                   (
+                    (
+                     (1 - pa_perc) *
+                     (((ws_vol - sub_meter) * GREATEST(NVL(mdvol_for_ws_meter_perc,0),nvl(mdvol_for_te_meter_perc,0),1)) -    --Coalesce to 1 not 0?
+                      (da_vol*1) -
+                      (fa_vol)
+                     )
+                    )
+                    + te_vol_filtered
+                    + calc_discharge_vol
+                   )
+                   mo_calc,
+                   da_only,
+                   da_exists,
+                   te_contributing,
+                   ms_contributing
+              FROM (
+                    SELECT no_iwcs,
+                           period,
+                           COUNT(*) working_rows,
+                           SUM(te_vol)                  te_vol,
+                           MAX(CASE
+                                 WHEN period = latest_period THEN
+                                    te_year
+                                 ELSE
+                                    0
+                               END
+                              ) te_days,
+                           MAX(CASE
+                                 WHEN period = latest_period THEN
+                                    ouw_year
+                                 ELSE
+                                    0
+                               END
+                              ) ouw_days,
+                           SUM(ms_vol)                  ms_vol,
+                           SUM(te_vol_filtered)         te_vol_filtered,
+                           MAX(mdvol_for_ws_meter_perc) mdvol_for_ws_meter_perc,
+                           MAX(mdvol_for_te_meter_perc) mdvol_for_te_meter_perc,
+                           SUM(ws_vol)                  ws_vol,
+                           SUM(calc_discharge_vol)      calc_discharge_vol,
+                           SUM(sub_meter)               sub_meter,
+                           SUM(da_vol)                  da_vol,
+                           SUM(fa_vol)                  fa_vol,
+                           MAX(pa_perc)                 pa_perc,
+                           MIN(da_yn)                   da_only,
+                           MAX(da_yn)                   da_exists,
+                           MAX(te_contributing)         te_contributing,
+                           MAX(ms_contributing)         ms_contributing
+                      FROM (SELECT no_iwcs,
+                                   period,
+                                   stage,
+                                   ltbc_start,
+                                   ltbc_finish,
+                                   MAX(period) OVER (PARTITION BY no_iwcs ORDER BY no_iwcs) latest_period, -- the maximum period for no_iwcs
+                                   met_ref,
+                                   ROUND(te_vol,0) te_vol,
+                                   te_year,
+                                   ROUND(ms_vol,0) ms_vol,
+                                   ouw_year,
+                                   te_vol_filtered,
+                                   mdvol_for_ws_meter_perc,
+                                   mdvol_for_te_meter_perc,
+                                   ws_vol,
+                                   calc_discharge_vol,
+                                   sub_meter,
+                                   da_vol,
+                                   fa_vol,
+                                   pa_perc,
+                                   da_yn,
+                                   CASE
+                                      WHEN te > 0 AND te_vol > 0 
+                                      THEN
+                                         'Y'
+                                      ELSE
+                                         'N'
+                                   END AS te_contributing,
+                                   CASE
+                                      WHEN ms > 0 AND ms_vol > 0 
+                                      THEN
+                                         'Y'
+                                      ELSE
+                                         'N'
+                                   END AS ms_contributing
+                              FROM bt_te_working
+                              JOIN lu_te_billing_cycle
+                                ON period = ltbc_period
+                                   AND stage = ltbc_cycle_number
+--where no_iwcs in (14427001101, 14427001102, 12509002501)
+--                           ) WHERE period + 1 >= latest_period
+                           ) WHERE period = latest_period
+                    GROUP BY no_iwcs, period
+            )
+    )
+    GROUP BY no_iwcs
   ) working_data
     ON cd.no_iwcs = working_data.no_iwcs
-  LEFT OUTER JOIN (
+  LEFT OUTER JOIN ( -- Retrieves no_property, supply_point_code and no_legal_entity for Trade Effluent
      SELECT DISTINCT
             TO_NUMBER(LTRIM(TRIM(extref.cd_ext_ref),'0')) no_iwcs,
             extref.no_property,
@@ -145,7 +307,20 @@ SELECT
       WHERE ds_ext_reference = 'Industrial Waste Reference '
         AND REPLACE(TRANSLATE(cd_ext_ref,'0123456789',' '),' ','') IS NULL   -- Verify numeric Format
   ) extref
-    ON cd.no_iwcs = extref.no_iwcs;
+    ON cd.no_iwcs = extref.no_iwcs
+    WHERE cd.no_iwcs NOT IN ( -- Ignore no_iwcs rows already reported in error by P_MOU_TRAN_TE_WORKING
+                             SELECT SUBSTR(elog.txt_key,1,INSTR(elog.txt_key,',')-1) no_iwcs
+                               FROM mig_errorlog elog
+                               JOIN mig_errref   eref
+                                 ON elog.no_err = eref.no_err
+                               LEFT OUTER JOIN mig_jobstatus jstatus
+                                 ON elog.no_batch = jstatus.no_batch
+                                    AND elog.no_instance = jstatus.no_instance
+                              WHERE jstatus.txt_arg = 'P_MOU_TRAN_TE_WORKING'
+                                AND elog.no_batch = l_no_batch
+                                AND elog.ind_log = 'E'
+                              GROUP BY SUBSTR(elog.txt_key,1,INSTR(elog.txt_key,',')-1)
+                            );
 
   TYPE tab_te_summary IS TABLE OF cur_te_summary%ROWTYPE INDEX BY PLS_INTEGER;
   t_te_summary  tab_te_summary;
@@ -194,29 +369,68 @@ BEGIN
       l_err.TXT_KEY := t_te_summary(i).no_iwcs;
       l_rec_written := TRUE;
       l_no_row_read := l_no_row_read + 1;
-
+      
+      -- Check stw calculation equals the MOSL calculation 
+      IF ROUND(t_te_summary(i).mo_calc,0) = ROUND(t_te_summary(i).stw_calc,0) THEN
+         l_mo_stw_balanced_yn := 'Y';
+      ELSE
+         l_mo_stw_balanced_yn := 'N';
+      END IF;
+      
+      -- Derive column SEWERAGEVOLUMEADJMENTHOD             -- I-322
+      IF t_te_summary(i).da_exists = 'Y' THEN
+            l_svam := 'DA';
+      ELSIF t_te_summary(i).te_contributing = 'Y' THEN
+            l_svam := 'SUBTRACT';
+      ELSE
+            l_svam := 'NONE';
+      END IF;
+      
+      -- Generate a warning if no_account found
+      P_MIG_BATCH.FN_ERRORLOG(NO_BATCH,                                                                                  -- Batch number
+                              L_JOB.NO_INSTANCE,                                                                         -- Job number
+                              'W',                                                                                       -- log
+                              SUBSTR('Missing no_account on teaccess.cusdata',1,100),                                    -- error/warning
+                              L_ERR.TXT_KEY,                                                                             -- key
+                              SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100)                                          -- data
+                             );
+      
+      -- Generate a warning if no_property found
+            P_MIG_BATCH.FN_ERRORLOG(NO_BATCH,                                                                                  -- Batch number
+                              L_JOB.NO_INSTANCE,                                                                         -- Job number
+                              'W',                                                                                       -- log
+                              SUBSTR('Unable to find the no_property',1,100),                                            -- error/warning
+                              L_ERR.TXT_KEY,                                                                             -- key
+                              SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100)                                          -- data
+                             );
 
       BEGIN
         INSERT INTO bt_te_summary (
-           NO_ACCOUNT,       NO_IWCS,             NO_PROPERTY,      SUPPLY_POINT_CODE, NO_LEGAL_ENTITY,
-           NO_WORKING_ROWS,  DISTRICT,            SEWAGE,           SITECODE,          DISNO,
-           SITE_NAME,        SITE_ADD_1,          SITE_ADD_2,       SITE_ADD_3,        SITE_ADD_4,
-           SITE_PC,          BILL_NAME,           BILL_ADD_1,       BILL_ADD_2,        BILL_ADD_3,
-           BILL_ADD_4,       BILL_PC,             XREF,             SP_CODE,           NO_ACCOUNT_REF,
-           CHARGE_CODE,      CW_ADV,              OTHER_USED_WATER, DIS_DESC,          AMMONIA,
-           COD,              SS,                  STATUS,           CEASED_DATE,       BILL_CYCLE,
-           START_CYPHER,     DATA_PROVIDE_METHOD, DIS_START_DATE,   TAME_AREA,         COL_CALC,
-           TE_VOLUME,        OUW_VOLUME,          TE_DAYS,          OUW_DAYS)
+        NO_ACCOUNT,              NO_IWCS,             NO_PROPERTY,             SUPPLY_POINT_CODE,       NO_LEGAL_ENTITY,
+        NO_WORKING_ROWS,         DISTRICT,            SEWAGE,                  SITECODE,                DISNO,
+        SITE_NAME,               SITE_ADD_1,          SITE_ADD_2,              SITE_ADD_3,              SITE_ADD_4,
+        SITE_PC,                 BILL_NAME,           BILL_ADD_1,              BILL_ADD_2,              BILL_ADD_3,
+        BILL_ADD_4,              BILL_PC,             XREF,                    SP_CODE,                 NO_ACCOUNT_REF,
+        CHARGE_CODE,             CW_ADV,              OTHER_USED_WATER,        DIS_DESC,                AMMONIA,
+        COD,                     SS,                  STATUS,                  CEASED_DATE,             BILL_CYCLE,
+        START_CYPHER,            DATA_PROVIDE_METHOD, DIS_START_DATE,          TAME_AREA,               COL_CALC,
+        TE_VOL,                  OUW_VOL,             TE_DAYS,                 OUW_DAYS,                FA_VOL,
+        DA_VOL,                  PA_PERC,             MDVOL_FOR_WS_METER_PERC, MDVOL_FOR_TE_METER_PERC, CALC_DISCHARGE_VOL,
+        SUB_METER,               WS_VOL,              MO_CALC,                 STW_CALC,                MO_STW_BALANCED_YN,
+        SEWERAGEVOLUMEADJMENTHOD)
         VALUES (
-           t_te_summary(i).no_account,      t_te_summary(i).no_iwcs,             t_te_summary(i).no_property,      t_te_summary(i).supply_point_code, t_te_summary(i).no_legal_entity,
-           t_te_summary(i).no_working_rows, t_te_summary(i).district,            t_te_summary(i).sewage,           t_te_summary(i).sitecode,          t_te_summary(i).disno,
-           t_te_summary(i).site_name,       t_te_summary(i).site_add_1,          t_te_summary(i).site_add_2,       t_te_summary(i).site_add_3,        t_te_summary(i).site_add_4,
-           t_te_summary(i).site_pc,         t_te_summary(i).bill_name,           t_te_summary(i).bill_add_1,       t_te_summary(i).bill_add_2,        t_te_summary(i).bill_add_3,
-           t_te_summary(i).bill_add_4,      t_te_summary(i).bill_pc,             t_te_summary(i).xref,             t_te_summary(i).sp_code,           t_te_summary(i).no_account_ref,
-           t_te_summary(i).charge_code,     t_te_summary(i).cw_adv,              t_te_summary(i).other_used_water, t_te_summary(i).dis_desc,          t_te_summary(i).ammonia,
-           t_te_summary(i).cod,             t_te_summary(i).ss,                  t_te_summary(i).status,           t_te_summary(i).ceased_date,       t_te_summary(i).bill_cycle,
-           t_te_summary(i).start_cypher,    t_te_summary(i).data_provide_method, t_te_summary(i).dis_start_date,   t_te_summary(i).tame_area,         t_te_summary(i).col_calc,
-           t_te_summary(i).te_volume,       t_te_summary(i).ouw_volume,          t_te_summary(i).te_days,          t_te_summary(i).ouw_days);
+           t_te_summary(i).no_account,      t_te_summary(i).no_iwcs,             t_te_summary(i).no_property,             t_te_summary(i).supply_point_code,       t_te_summary(i).no_legal_entity,
+           t_te_summary(i).no_working_rows, t_te_summary(i).district,            t_te_summary(i).sewage,                  t_te_summary(i).sitecode,                t_te_summary(i).disno,
+           t_te_summary(i).site_name,       t_te_summary(i).site_add_1,          t_te_summary(i).site_add_2,              t_te_summary(i).site_add_3,              t_te_summary(i).site_add_4,
+           t_te_summary(i).site_pc,         t_te_summary(i).bill_name,           t_te_summary(i).bill_add_1,              t_te_summary(i).bill_add_2,              t_te_summary(i).bill_add_3,
+           t_te_summary(i).bill_add_4,      t_te_summary(i).bill_pc,             t_te_summary(i).xref,                    t_te_summary(i).sp_code,                 t_te_summary(i).no_account_ref,
+           t_te_summary(i).charge_code,     t_te_summary(i).cw_adv,              t_te_summary(i).other_used_water,        t_te_summary(i).dis_desc,                t_te_summary(i).ammonia,
+           t_te_summary(i).cod,             t_te_summary(i).ss,                  t_te_summary(i).status,                  t_te_summary(i).ceased_date,             t_te_summary(i).bill_cycle,
+           t_te_summary(i).start_cypher,    t_te_summary(i).data_provide_method, t_te_summary(i).dis_start_date,          t_te_summary(i).tame_area,               t_te_summary(i).col_calc,
+           t_te_summary(i).te_vol,          t_te_summary(i).ouw_vol,             t_te_summary(i).te_days,                 t_te_summary(i).ouw_days,                t_te_summary(i).fa_vol,
+           t_te_summary(i).da_vol,          t_te_summary(i).pa_perc,             t_te_summary(i).mdvol_for_ws_meter_perc, t_te_summary(i).mdvol_for_te_meter_perc, t_te_summary(i).calc_discharge_vol,
+           t_te_summary(i).sub_meter,       t_te_summary(i).ws_vol,              t_te_summary(i).mo_calc,                 t_te_summary(i).stw_calc,                l_mo_stw_balanced_yn,
+           l_svam);
       EXCEPTION
           WHEN OTHERS THEN 
              l_no_row_dropped := l_no_row_dropped + 1;
@@ -282,8 +496,8 @@ WHEN OTHERS THEN
 
      
 END P_MOU_TRAN_TE_SUMMARY;
+
 /
 show error;
 
 exit;
-

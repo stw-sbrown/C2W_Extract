@@ -1,7 +1,7 @@
 --
 -- 1_DDL_KeyGen_TVP054.sql
 -- Create key gen table
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 4441 $
 -- Date - 23/03/2016
 -- Written By - Surinder Badhan
 --
@@ -9,12 +9,13 @@
 ---------------------------------------------------------------------------------------
 -- Version     Date        Author     Description
 -- ---------   ----------  --------   --------------------------------------------------
+-- V 1.02      15/06/2016  S.Badhan   Removed drop of tables as done in DROP proc
 -- V 1.01      11/04/2016  S.Badhan   Removed meter information and added serv prov status,
 --                                    AGG_NET AND FG_CONSOLIDATED
 -- V 1.00      23/03/2016  S.Badhan   Intial
 ----------------------------------------------------------------------------------------
 
-DROP TABLE BT_TVP054 PURGE;
+--DROP TABLE BT_TVP054 PURGE;
 --DROP PUBLIC SYNONYM BT_TVP054;
 
  CREATE TABLE BT_TVP054 

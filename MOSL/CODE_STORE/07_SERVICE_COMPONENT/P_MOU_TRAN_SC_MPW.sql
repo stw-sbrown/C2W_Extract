@@ -9,7 +9,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_SC_MPW.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 4579 $
 --
 -- CREATED        : 15/03/2016
 --
@@ -19,9 +19,12 @@ IS
 -- This package must be run each time the transform batch is run. 
 ---------------------------- Modification History --------------------------------------   
 --
--- Version     Date                Author         Description
--- ---------   ---------------     -------             ----------------------------------
--- V 0.01      15/03/2016          S.Badhan        Initial Draft
+-- Version   Date        Author    Description
+-- -------- ----------  --------  ------------------------------------------------------
+-- V 0.04   24/06/2016  D.Cheung  I-257 - Add PCHG algorithm type to cursor filter
+-- V 0.03   22/06/2016  L.Smith   Remove CP25
+-- V 0.02   26/05/2016  S.Badhan  Choose the latest tariff version.
+-- V 0.01   15/03/2016  S.Badhan  Initial Draft
 -----------------------------------------------------------------------------------------
 
   c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_SC_MPW';
@@ -30,6 +33,7 @@ IS
   l_error_message               VARCHAR2(512);  
   l_progress                    VARCHAR2(100);
   l_prev_prp                    BT_TVP054.NO_PROPERTY%TYPE; 
+  l_prev_sp                     BT_TVP054.NO_SERV_PROV%TYPE;   
   l_job                         MIG_JOBSTATUS%ROWTYPE;
   l_err                         MIG_ERRORLOG%ROWTYPE; 
   l_mpw                         BT_SC_MPW%ROWTYPE; 
@@ -55,7 +59,7 @@ CURSOR cur_prop (p_no_property_start   BT_TVP054.NO_PROPERTY%TYPE,
             BT_SP_TARIFF_EXTREF    spv,
             LU_SERVICE_CATEGORY    cat   
       WHERE  spr.NO_PROPERTY BETWEEN p_no_property_start AND p_no_property_end   
-      AND    spv.CD_ALGORITHM = 'BCAP'
+      AND    spv.CD_ALGORITHM IN ('BCAP','PCHG')
       AND    spv.CD_TARIFF    = spr.CD_TARIFF
       AND    spr.TP_ENTITY_332  = 'S'
       AND    spr.DS_EXT_REFERENCE IN ('2016-2017 Peak','2016-2017 Off Peak', '2015-2016 Peak','2015-2016 Off Peak')
@@ -66,8 +70,9 @@ CURSOR cur_prop (p_no_property_start   BT_TVP054.NO_PROPERTY%TYPE,
       AND    cat.SERVICECOMPONENTTYPE  = 'MPW'          ) x
       WHERE  Record_Nr = 1
       GROUP BY NO_PROPERTY, NO_SERV_PROV, NO_COMBINE_054, CD_SERV_PROV, NO_TARIFF_GROUP, NO_TARIFF_SET, CD_TARIFF, DS_EXT_REFERENCE
-      ;
-
+      ORDER BY NO_PROPERTY, NO_SERV_PROV, NO_COMBINE_054, DS_EXT_REFERENCE DESC ;  
+      
+      
 TYPE tab_property IS TABLE OF cur_prop%ROWTYPE INDEX BY PLS_INTEGER;
 t_prop  tab_property;
   
@@ -86,6 +91,7 @@ BEGIN
    l_no_row_err := 0;
    l_no_row_exp := 0;
    l_prev_prp := 0;
+   l_prev_sp := 0;
    l_job.IND_STATUS := 'RUN';
 
    -- get job no and start job
@@ -131,7 +137,7 @@ BEGIN
       l_mpw.D2079_MAXDAILYDMD := 0;
       l_mpw.D2080_DLYRESVDCAP := 0;
       
-   --   IF l_prev_prp <> t_prop(i).NO_PROPERTY THEN
+      IF l_prev_prp || l_prev_sp <> t_prop(i).NO_PROPERTY || t_prop(i).NO_SERV_PROV THEN
       
          l_no_row_read := l_no_row_read + 1;
 
@@ -190,8 +196,9 @@ BEGIN
         END IF;
          
         l_prev_prp := t_prop(i).NO_PROPERTY;
+        l_prev_sp := t_prop(i).NO_SERV_PROV; 
       
-    --  END IF;
+      END IF;
       
     END LOOP;
     
@@ -209,7 +216,7 @@ BEGIN
   l_progress := 'Writing Counts';  
   
   
-  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP25', 700, l_no_row_insert, 'Distinct Service Component Type during KEY_GEN stage 2');
+--  P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP25', 700, l_no_row_insert, 'Distinct Service Component Type during KEY_GEN stage 2');
 
   l_job.IND_STATUS := 'END';
   P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);   

@@ -1,5 +1,5 @@
-
-  CREATE OR REPLACE PROCEDURE P_MOU_TRAN_METER_TARGET (no_batch          IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
+create or replace
+PROCEDURE           P_MOU_TRAN_METER_TARGET (no_batch          IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
                                                 no_job            IN MIG_JOBREF.NO_JOB%TYPE,
                                                 return_code       IN OUT NUMBER )
 IS
@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_METER_TARGET.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5284 $
 --
 -- CREATED        : 11/03/2016
 --
@@ -23,6 +23,52 @@ IS
 --
 -- Version     Date                Author         CR/DEF  Description
 -- ---------   ---------------     -------        ------  ----------------------------------
+-- V 9.22      25/08/2016          D.Cheung               I-350 - Duplicate Meterref exception caused by RTS returning two values
+-- V 9.21      23/08/2016          D.Cheung               Appending properties in LU_SPID_OWC_RETAILER 
+-- v 9.20      22/08/2016          D.Cheung               I-342 - Fixed join issue on RTS
+-- v 9.19      16/09/2016          D.Cheung               I-342 - Use PC_USAGE_SPLIT value for RTS
+--                                                        I-343 - If Tariff on ServiceComponent has Water Charge then set WaterChargeableMeterSize to PhysicalMeterSize
+-- v 9.18      15/08/2016          D.Cheung               I-339 - Default FG_NMM to Y if installed property is not in an eligible premise
+-- v 9.17      10/08/2016          L.Smith                SI-031 - New measures required for reconciliation
+-- v 9.16      01/08/2016          D.Cheung               I-299 - change logic to get correct corespids for network subs-meters
+--                                              S_QC_138  SAP-defect 138 - Can't have NULL RTS (MOSL technical guidance indicates will set to default value anyway if NULL)
+-- v 9.15      19/07/2016          D.Cheung       CR_031  Workaround for remaining GIS exceptions - set to MOSL default values, output as warnings
+-- v 9.14      13/07/2016          D.Cheung       CR_029  Add warning workaround for Not known Outreader protocols
+-- v 9.13      12/07/2016          D.Cheung       CR_028  Add exception check to see if MPW Service Component Exists for SPID
+-- V 9.12      12/07/2016          D.Cheung     S_CR_014  SAP Change to add new field UNITOFMEASURE with original target code
+-- V 9.11      11/07/2016          D.Cheung               I-286 - Join logic setting nonmarketmeter flags incorrectly and duplicating meters
+-- V 9.10      08/07/2016          D.Cheung               I-281 - No Meter network records due to dropped meters
+--                                                        IF AGG_NET use NO_PROPERTY_MASTER
+-- V 9.09      07/07/2016          D.Cheung     S_CR_007  SAP Change - Add field for METER_MODEL from Ttarget TVP063EQUIPMENT.CD_MODEL
+--                                              S_CR_007  SAP Change - Change MeterLocationDesc rule to move LOC_STD_EQUIP_41 value
+-- V 9.08      06/07/2016          D.Cheung       CR_021  Fix Multiple SPIDS - Change joins on cursor to only pick up MAIN meter records and logical property = installed property
+--                                                        Add filter for DT_END IS NOT NULL to main cursor
+-- V 9.07      05/07/2016          D.Cheung       CR_021  Add MASTER_PROPERTY for Aggregated Properties
+-- V 9.06      04/07/2016          D.Cheung       CR_021  Fix non-market meters being dropped - SPID RULE ISSUE
+-- V 9.05      29/06/2016          K.Burton               Issue - I-261 Change to GIS coordinates validation rules - now calls
+--                                                        function FN_VALIDATE_GIS
+-- V 9.04      29/06/2016          D.Cheung       CR_017  Reopen CR_17 If Outreader_ID is NULL and NOT TOUCH read type set to Unavailable
+--                                                CR_021  Change to NON-MARKET METERS following changes to Aggregate Properties
+-- V 9.03      28/06/2016          D.Cheung       CR_025  Change MANUFACTURER/MANUFCODE to use mapping table LU_METER_MANUFACTURER 
+-- V 9.02      23/06/2016          L.Smith                Performance changes
+-- V 9.01      21/06/2016          D.Cheung               I-241 OutreaderID cannot have spaces
+-- V 8.03      14/06/2016          D.Cheung               Update change for Meter OutreaderGIS X and Meter OutreaderGIS Y 
+-- V 8.02      13/06/2016          O.Badmus               Issue I-232 - Meter OutreaderGIS X and Meter OutreaderGIS Y 
+--                                                        - Must be populated for where OutreaderID(D3039) is provided, otherwise must be un-populated
+-- V 8.01      06/06/2016          D.Cheung       CR_018  CR_018 - Add Lookup for SAP Equipment Number
+-- V 7.02      27/05/2016          D.Cheung       CR_017  New busines rules for eliminating data Exceptions
+--                                                        1.	Missing outreader_id for touchpad meters. Set Outreader_id to ‘Not available for Touchpad’
+--                                                        3.	Meter Location Code is Null - Set to Internal (I) where manufacturer is in this list:-
+--                                                            (Radio Actaris, Fusion Meters Limited, Smartmeter) - Otherwise set to External (O)
+--                                                        4.	Missing Meter Read Frequency These should be excluded so reduce the exception to a warning
+--                                                            Meter marked as available but taken out of route – probably not on an active service (e.g. demolished/removed)’
+-- V 7.01      26/05/2016          D.Cheung       D_51    MOSL TEST1 Defect m1 - Remove spaces from ManufacturerSerialNum
+--                                                        Swap Manufacturer and ManufCode
+--                                                D_54    MOSL TEST1 Defect m4 - non-market meter should not have GIS and Y
+-- V 6.01      19/05/2016          D.Cheung       CR_014  MOSL defect - new MANUFACTURERCODE field mapping
+--                                                        Corrected minor bug with Quarterly meter read warnings
+--                                                CR_014  Add new fields to split FreeDescriptor values - for SAP
+--                                                        Add new field for InstalledPropertyNumber
 -- V 5.01      12/05/2016          D.Cheung       CR_013  Defect D37 - RETURNTOSEWER should not be populated for Water meters - i.e. default to NULL
 -- V.4.02      10/05/2016          K.Burton               Added IF condition around YEARLYVOLESTIMATE so it is only populated
 --                                                        for SEWERAGE, PRIVATETE and PRIVATEWATER
@@ -78,16 +124,21 @@ IS
   L_REC_WRITTEN                 BOOLEAN;
   l_rec_exc                     BOOLEAN;
   l_rec_war                     BOOLEAN;
+  l_sc_count                    NUMBER;
+  l_marketable_meter_cnt        NUMBER;  --SI-031
+  l_marketable_new_meter_cnt    NUMBER;  --SI-031
+  l_water_charge_cnt            NUMBER;  --v9.19
 
 --**** V 1.03 Performance optimization code
-  l_w_spid                      MO_METER.SPID_PK%TYPE;
-  l_s_spid                      MO_METER.SPID_PK%TYPE;
-
+--  l_w_spid                      MO_METER.SPID_PK%TYPE;
+--  l_s_spid                      MO_METER.SPID_PK%TYPE;
+  
+  l_gis_code VARCHAR2(60); -- V 9.05
 
 CURSOR CUR_MET (P_NO_EQUIPMENT_START   CIS.TVP043METERREG.NO_EQUIPMENT%type,
                  P_NO_EQUIPMENT_END     CIS.TVP043METERREG.NO_EQUIPMENT%type)
     IS
-      SELECT /*+ PARALLEL(T703,12) PARALLEL(TV163,12)  PARALLEL(T034,12) PARALLEL(T036,12) */
+      SELECT /*+ FULL(T163) FULL(TV163) FULL(T043) FULL(T225) FULL(TV163_I) FULL(TV163_S) FULL(TV054) FULL(TV163_RTS) PARALLEL(T703,12) PARALLEL(TV163,12)  PARALLEL(T034,12) PARALLEL(T036,12) */
       DISTINCT TRIM(T703.CD_EXT_REF)CD_EXT_REF ,T043.NO_EQUIPMENT
           ,TRIM(T036.NM_PREFERRED) NM_PREFERRED
           ,TRIM(T063.NO_UTL_EQUIP) NO_UTL_EQUIP
@@ -98,20 +149,20 @@ CURSOR CUR_MET (P_NO_EQUIPMENT_START   CIS.TVP043METERREG.NO_EQUIPMENT%type,
           ,TRIM(T163.CD_MTR_RD_MTHD_330) CD_MTR_RD_MTHD_330
           ,TRIM(T163.LOC_STD_EQUIP_41) LOC_STD_EQUIP_41
           ,TRIM(T163.ID_SEAL) ID_SEAL
--- **** DE-LINK LOGICAL ASSOCIATION AND BASE ON PHYSICAL INSTALLED LOCATION
-          --,TV163.NO_PROPERTY
           ,TV163.NO_PROPERTY_INST NO_PROPERTY
           ,TRIM(T163.DS_LOCATION) DS_LOCATION
           ,TRIM(T163.TXT_SPECIAL_INSTR) TXT_SPECIAL_INSTR
-          ,TRIM(TV054.CORESPID) CORESPID
-          ,LSR.SPID_PK -- V 3.02
-          ,CASE WHEN TRIM(TV054.CORESPID) IS NULL THEN 1 ELSE 0 END NONMARKETMETERFLAG  -- V 3.02
+          ,CASE WHEN NVL(TRIM(TV163_I.FG_NMM),'Y') = 'Y' THEN NULL ELSE TRIM(TV054.CORESPID) END CORESPID -- CR_021   v9.18
+          ,CASE WHEN NVL(TRIM(TV163_I.FG_NMM),'Y') = 'Y' THEN NULL ELSE TRIM(LSR.SPID_PK) END SPID_PK -- V 3.02   v9.18
+          ,CASE WHEN NVL(TRIM(TV163_I.FG_NMM),'Y') = 'Y' THEN 1 ELSE 0 END NONMARKETMETERFLAG -- v9.04      v9.18
           ,'POTABLE' METERTREATMENT  -- V 3.02
+          ,LSE.SAPEQUIPMENT --v8.01
+          ,CASE WHEN TRIM(TV163.AGG_NET) IN ('N','M') THEN NULL ELSE TV163.NO_PROPERTY_MASTER END NO_PROPERTY_MASTER -- v9.07
+--          , TV163.NO_PROPERTY_MASTER -- v9.07
+          ,TRIM(T063.CD_MODEL) METER_MODEL    --v9.09
+          ,MAX(TV163_RTS.PC_USAGE_SPLIT * 100) AS RETURNTOSEWER   --v9.22
+          ,CASE WHEN OWC.STWPROPERTYNUMBER_PK IS NULL THEN 0 ELSE 1 END OWC_PROPERTY    --v9.21
       FROM CIS.TVP040LOGICALREG T040
--- **** DE-LINK LOGICAL ASSOCIATION AND BASE ON PHYSICAL INSTALLED LOCATION
---      JOIN CIS.TVP054SERVPROVRESP T054 on (T040.NO_COMBINE_054 = T054.NO_COMBINE_054
---          AND  T040.CD_COMPANY_SYSTEM = 'STW1' AND T054.DT_END is null)
---      JOIN BT_TVP163 TV163 ON (T054.NO_PROPERTY = TV163.NO_PROPERTY_INST AND TV163.CD_COMPANY_SYSTEM = 'STW1')  -- CHANGE TO NO_PROPERTY_INST to get unique meters
       JOIN CIS.TVP034INSTREGASSGN T034 on (T034.CD_COMPANY_SYSTEM = T040.CD_COMPANY_SYSTEM
           AND T034.NO_COMBINE_054  = T040.NO_COMBINE_054
           AND T034.TP_EQUIPMENT    = T040.TP_EQUIPMENT
@@ -126,15 +177,20 @@ CURSOR CUR_MET (P_NO_EQUIPMENT_START   CIS.TVP043METERREG.NO_EQUIPMENT%type,
       )
       JOIN CIS.TVP163EQUIPINST T163 ON (T163.NO_EQUIPMENT = T043.NO_EQUIPMENT
           AND TRIM(T163.CD_COMPANY_SYSTEM) = 'STW1'
-          AND TRIM(T163.ST_EQUIP_INST)     = 'A' --Available
-          AND TRIM(T163.NO_VISITABLE_ITEM) IS NOT NULL    -- V4.01
+--          AND TRIM(T163.ST_EQUIP_INST)     = 'A' --Available    -- v9.21
+          AND (
+              (TRIM(T163.ST_EQUIP_INST) = 'A') --Available
+              OR 
+              (T163.NO_PROPERTY IN (SELECT STWPROPERTYNUMBER_PK FROM LU_SPID_OWC_RETAILER))
+          )  -- v9.21
       )
--- **** DE-LINK LOGICAL ASSOCIATION AND BASE METER KEYGEN JOIN ON PHYSICAL INSTALLED LOCATION
       JOIN BT_TVP163 TV163 ON (T163.NO_PROPERTY = TV163.NO_PROPERTY_INST
           AND TV163.NO_EQUIPMENT = T163.NO_EQUIPMENT
           AND TV163.NO_EQUIPMENT = T043.NO_EQUIPMENT
+          AND TV163.FG_ADD_SUBTRACT = '+'     --v9.08          
+          AND TV163.DT_END_054 IS NULL
+          AND TV163.CD_SERVICE_PROV = 'W'
       )
--- ****
       JOIN CIS.TVP063EQUIPMENT    T063 on (T063.NO_EQUIPMENT      = T043.NO_EQUIPMENT
           AND T063.CD_COMPANY_SYSTEM = 'STW1')
       JOIN CIS.TVP036LEGALENTITY T036 on  T036.NO_LEGAL_ENTITY = T063.NO_BUSINESS
@@ -145,29 +201,42 @@ CURSOR CUR_MET (P_NO_EQUIPMENT_START   CIS.TVP043METERREG.NO_EQUIPMENT%type,
           AND T053.TP_EQUIPMENT = T043.TP_EQUIPMENT
           AND T043.CD_COMPANY_SYSTEM='STW1'
       )
+      LEFT JOIN LU_SPID_OWC_RETAILER OWC ON (TV163.NO_PROPERTY_INST = OWC.STWPROPERTYNUMBER_PK)
+      LEFT JOIN LU_SAP_EQUIPMENT LSE ON (LSE.STWMETERREF = T063.NO_EQUIPMENT)   --v8.01
       LEFT JOIN  CIS.TVP703EXTERNREFDET T703 on (T703.NO_PROPERTY = TV163.NO_PROPERTY_INST
           AND T703.NO_SERV_PROV     = TV163.TVP202_NO_SERV_PROV_INST
           AND T703.TP_ENTITY       = 'S' -- Serv Prov
           AND T703.NO_EXT_REFERENCE  = 24 -- Meter Grid Ref
           AND T703.CD_COMPANY_SYSTEM = 'STW1'
       )
--- ***** JOIN BACK ONTO KEYGEN TO CHECK FOR NON-ELIGABLE PHYSICAL LOCATIONS
-      LEFT JOIN BT_TVP054 TV054 ON (TV163.NO_PROPERTY_INST = TV054.NO_PROPERTY)
--- ***** V 3.02 - REOPENED  Issue I-118 - SPIDs now retrieved from lookup for water only
+-- GET INSTALLED METER DETAILS IF IT IS A NETWORK OR MIXED SUB METER      
+      LEFT JOIN BT_TVP163 TV163_S ON (TV163.NO_PROPERTY_INST = TV163_S.NO_PROPERTY 
+          AND TV163_S.NO_PROPERTY_MASTER <> TV163_S.NO_PROPERTY
+          AND TV163_S.FG_ADD_SUBTRACT = '+' 
+          AND TV163_S.AGG_NET IN ('N','M')  
+          AND TV163_S.DT_END_054 IS NULL 
+          AND TV163_S.CD_SERVICE_PROV = 'W')
+-- EVALUATE CORESPID IN ORDER PRIORITY - SUB-METER, AGGREGATE-MASTER, INSTALLED METER
+      LEFT JOIN BT_TVP054 TV054 ON (NVL(TV163_S.NO_PROPERTY,NVL(TV163.NO_PROPERTY_MASTER,TV163.NO_PROPERTY_INST)) = TV054.NO_PROPERTY)
+-- GET NONMARKETMETER FLAG FROM INSTALLED PROPERTY      
+      LEFT JOIN BT_TVP163 TV163_I ON (TV163.NO_PROPERTY_INST = TV163_I.NO_PROPERTY) --CR_021
       LEFT JOIN LU_SPID_RANGE LSR ON (TV054.CORESPID = LSR.CORESPID_PK
           AND LSR.SERVICECATEGORY = 'W')
+-- GET SEWERAGE PC_USAGE_SPLIT FROM S SERVICE PROVISION   V9.19    
+      LEFT JOIN BT_TVP163 TV163_RTS ON (TV163_RTS.NO_PROPERTY_INST = TV163.NO_PROPERTY_INST
+          AND TV163_RTS.NO_EQUIPMENT = TV163.NO_EQUIPMENT
+          AND TV163_RTS.FG_ADD_SUBTRACT = '+'
+          AND TV163_RTS.DT_END_054 IS NULL
+          AND TV163_RTS.CD_SERVICE_PROV = 'S'
+      )
+--      WHERE T043.NO_EQUIPMENT BETWEEN 1 AND  999999999
       WHERE T043.NO_EQUIPMENT BETWEEN P_NO_EQUIPMENT_start AND  P_NO_EQUIPMENT_end
---      WHERE T043.NO_EQUIPMENT BETWEEN 245002007 AND 357002011
--- **** DE-LINK LOGICAL ASSOCIATION AND BASE ON PHYSICAL INSTALLED LOCATION
---          AND T054.CD_COMPANY_SYSTEM = 'STW1'
---          AND T054.NO_ACCT_BILL_GROUP = 1
---          AND T054.DT_START > TO_DATE('1901-01-01','YYYY-MM-DD')
-          AND TV163.CD_COMPANY_SYSTEM = 'STW1'
+--      AND TV163.NO_PROPERTY_INST IN (SELECT STWPROPERTYNUMBER_PK FROM LU_SPID_OWC_RETAILER)
+      AND TV163.CD_COMPANY_SYSTEM = 'STW1'
           AND T053.CD_COMPANY_SYSTEM='STW1'
           AND T040.NO_TARIFF_GROUP =1
           AND T040.NO_TARIFF_SET = 1
-          --AND TV163.NO_EQUIPMENT IN (146002372, 134008018)  -- **** TEST EXAMPLES
-  GROUP BY TRIM(T703.CD_EXT_REF), T043.NO_EQUIPMENT, TRIM(T036.NM_PREFERRED), TRIM(T063.NO_UTL_EQUIP), TRIM(T225.CD_WATR_MTR_SZ_158), TRIM(T053.CD_UNIT_OF_MEASURE), CASE WHEN T043.NO_EQUIPMENT = 955002908 THEN 1 ELSE 0 END, TRIM(T163.CD_MTR_RD_MTHD_330), TRIM(T163.LOC_STD_EQUIP_41), TRIM(T163.ID_SEAL), TV163.NO_PROPERTY_INST, TRIM(T163.DS_LOCATION), TRIM(T163.TXT_SPECIAL_INSTR), TRIM(TV054.CORESPID), LSR.SPID_PK, CASE WHEN TRIM(TV054.CORESPID) IS NULL THEN 1 ELSE 0 END, 'POTABLE'
+    group by TRIM(T703.CD_EXT_REF), T043.NO_EQUIPMENT, TRIM(T036.NM_PREFERRED), TRIM(T063.NO_UTL_EQUIP), TRIM(T225.CD_WATR_MTR_SZ_158), TRIM(T053.CD_UNIT_OF_MEASURE), CASE WHEN T043.NO_EQUIPMENT = 955002908 THEN 1 ELSE 0 END, TRIM(T163.CD_MTR_RD_MTHD_330), TRIM(T163.LOC_STD_EQUIP_41), TRIM(T163.ID_SEAL), TV163.NO_PROPERTY_INST, TRIM(T163.DS_LOCATION), TRIM(T163.TXT_SPECIAL_INSTR), CASE WHEN NVL(TRIM(TV163_I.FG_NMM),'Y') = 'Y' THEN NULL ELSE TRIM(TV054.CORESPID) END, CASE WHEN NVL(TRIM(TV163_I.FG_NMM),'Y') = 'Y' THEN NULL ELSE TRIM(LSR.SPID_PK) END, CASE WHEN NVL(TRIM(TV163_I.FG_NMM),'Y') = 'Y' THEN 1 ELSE 0 END, 'POTABLE', LSE.SAPEQUIPMENT, CASE WHEN TRIM(TV163.AGG_NET) IN ('N','M') THEN NULL ELSE TV163.NO_PROPERTY_MASTER END, TRIM(T063.CD_MODEL), CASE WHEN OWC.STWPROPERTYNUMBER_PK IS NULL THEN 0 ELSE 1 END
     ORDER BY T043.NO_EQUIPMENT;
 
 type TAB_METER is table of CUR_MET%ROWTYPE index by PLS_INTEGER;
@@ -188,6 +257,8 @@ BEGIN
     l_no_row_err := 0;
     l_no_row_exp := 0;
     l_prev_prp := 0;
+    l_marketable_meter_cnt := 0;      --SI-031
+    l_marketable_new_meter_cnt := 0;  --SI-031
     l_job.IND_STATUS := 'RUN';
 
     -- get job no
@@ -206,9 +277,11 @@ BEGIN
     BEGIN
         l_progress := 'Rebuilding BT_METER_READ_FREQ lookup';
         EXECUTE IMMEDIATE 'TRUNCATE TABLE BT_METER_READ_FREQ';
+        EXECUTE IMMEDIATE 'ALTER INDEX INDEX3 UNUSABLE';
         --delete from  BT_METER_READ_FREQ;
-        INSERT INTO BT_METER_READ_FREQ
-        SELECT /*+ PARALLEL(T163,12) PARALLEL(TV163,12)  PARALLEL(T249,12) PARALLEL(T200,12) */
+        INSERT /*+ append */
+               INTO BT_METER_READ_FREQ
+        SELECT /*+ FULL(T163) FULL(TV163) FULL(T249) FULL(T200) PARALLEL(T163,12) PARALLEL(TV163,12)  PARALLEL(T249,12) PARALLEL(T200,12) */
         DISTINCT TRIM(T249.CD_SCHED_FREQ) CD_SCHED_FREQ, TRIM(T235.DS_SCHED_FREQ) DS_SCHED_FREQ
 -- **** DE-LINK LOGICAL ASSOCIATION AND BASE METER KEYGEN JOIN ON PHYSICAL INSTALLED LOCATION
         , TV163.NO_PROPERTY_INST NO_PROPERTY
@@ -234,6 +307,8 @@ BEGIN
             and TRIM(T163.CD_COMPANY_SYSTEM) = 'STW1'
             and TRIM(T163.ST_EQUIP_INST)     = 'A';
         commit;
+        EXECUTE IMMEDIATE 'ALTER INDEX INDEX3 REBUILD';
+--        DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_METER_READ_FREQ');
     END;
 
     l_progress := 'processing ';
@@ -263,59 +338,47 @@ BEGIN
             L_REC_EXC := false;
             L_REC_WAR := false;
 
--- ***** V 3.02 REOPENED Issue I-118 - NONMARKETMETERFLAG and METERTREATMENT now derived directly in main cursor
---                        L_PROGRESS := 'CHECKING NULL CORESPID MATCH';
---            --CHECK IF CORESPID IS NULL FOR NO_EQUIPMENT - (i.e. physical property location is not on eligable properties list)
---            IF (t_met(I).CORESPID IS NULL) THEN
-----*** CR_04 flag for marketable or nonmarketable meter
---                --IF NO CORESPID - SET TO NON-MARKETABLE
---                l_mo.NONMARKETMETERFLAG := 1;
---                L_MO.SPID_PK := NULL;
---                L_MO.METERTREATMENT := 'POTABLE';
---                --P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('NULL CORESPID',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
---                --L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
---                --L_REC_EXC := true;
---            ELSE
---                L_PROGRESS := 'GETTING SPID AND METERTREATMENT';
---                --GET SPID_PK AND METERTREATMENT
---                --USES BT_METER_SPID lookup table
-----**** V 1.03 Performance optimization code
---                --SET TO MARKETABLE
---                l_mo.NONMARKETMETERFLAG := 0;  --*** CR_04 flag for marketable or nonmarketable meter
---                BEGIN
---                    SELECT *
---                    INTO l_w_spid, l_s_spid
---                    FROM (
---                        SELECT DISTINCT
---                            SPID_PK
---                            , SUPPLY_POINT_CODE
---                        FROM BT_METER_SPID
---                        WHERE CORESPID = t_met(i).CORESPID
---                            AND NO_PROPERTY = t_met(i).NO_PROPERTY
---                    )
---                    PIVOT (
---                        MAX(SPID_PK)
---                        FOR SUPPLY_POINT_CODE
---                            IN ('W' WATERSPID, 'S' SEWAGESPID)
---                    );
---                EXCEPTION
---                    WHEN NO_DATA_FOUND THEN
---                        l_w_spid := NULL;
---                        l_s_spid := NULL;
---                        P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('NO SPID FOUND FOR CORESPID',1,100),  t_met(i).NO_PROPERTY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
---                        L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
---                        L_REC_EXC := true;
---                END;
---                IF (l_w_spid IS NULL AND l_s_spid IS NOT NULL) THEN
---                    --only have Sewage meter
---                    L_MO.SPID_PK := l_s_spid;
---                    L_MO.METERTREATMENT := 'SEWERAGE';
---                ELSE
---                    --water only or both - get WATER spid
---                    L_MO.SPID_PK := l_w_spid;
---                    L_MO.METERTREATMENT := 'POTABLE';
---                END IF;
---            END IF;
+-- *** v9.06 - check for NULL SPID_PK on marketable meter
+            L_PROGRESS := 'CHECK SPID AVAILABLE FOR MARKETABLE METER';
+            IF (t_met(I).SPID_PK IS NULL AND t_met(i).NONMARKETMETERFLAG = 0) THEN
+                P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('Invalid NULL SPID_PK on Marketable meter',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
+                L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
+                L_REC_EXC := true;
+-- *** v9.13                
+            ELSIF (t_met(I).SPID_PK IS NOT NULL) THEN
+                BEGIN
+                    SELECT COUNT(*)
+                    INTO   l_sc_count
+                    FROM   MO_SERVICE_COMPONENT
+                    WHERE  SPID_PK = t_met(I).SPID_PK
+                        AND SERVICECOMPONENTTYPE = 'MPW';
+                    
+                    IF (l_sc_count = 0) THEN
+                        P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('NO MPW Service Component for POTABLE Meter',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
+                        L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
+                        L_REC_EXC := true;
+                    END IF;
+                END;
+            END IF;
+
+--*** v6.01 - ManufacturerCode mapping
+            L_PROGRESS := 'GETTING MANUFACTURER (CODE)';
+            L_MO.MANUFCODE := T_MET(I).NM_PREFERRED;                                  --V7.01
+--*** v9.03            
+            BEGIN
+                SELECT MANUFCODE
+                    INTO   L_MO.MANUFACTURER_PK
+                FROM   LU_METER_MANUFACTURER
+                WHERE  MANUFACTURER_PK = UPPER(L_MO.MANUFCODE);
+            EXCEPTION
+                WHEN NO_DATA_FOUND THEN
+                    P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('Manufacturer not in lookup mappings',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
+                    L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
+                    L_REC_EXC := true;
+            END;
+            --L_MO.MANUFACTURER_PK := REPLACE(UPPER(T_MET(I).NM_PREFERRED),' ','_');    --V7.01
+            L_MO.MANUFACTURERSERIALNUM_PK := REPLACE(UPPER(T_MET(I).NO_UTL_EQUIP),' ','');    --V7.01
+--*** v6.01
 
             L_PROGRESS := 'GETTING PHYSICALMETERSIZE';
             --PHYSICALMETERSIZE
@@ -422,28 +485,19 @@ BEGIN
                     AND NO_PROPERTY = t_met(i).NO_PROPERTY;	    -- Added to Fix ORA-01422 error
             EXCEPTION
                 when NO_DATA_FOUND then
---*** V4.01 - REOPENED Issue I-207 - revert to exclude NULL FREQ
---*** V3.01 - Issue I-207 - NULL METER FREQENCY
-                --IF (L_MO.PHYSICALMETERSIZE < 80) THEN
-                --    L_FREQ.CD_SCHED_FREQ := 'B';
-                --    P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'W', SUBSTR('WARN-NULL freqency converted to Bi-annually',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
-                --    L_NO_ROW_WAR := L_NO_ROW_WAR + 1;
-                --    L_REC_WAR := true;
-                --ELSIF (L_MO.PHYSICALMETERSIZE >= 80) THEN
-                --    L_FREQ.CD_SCHED_FREQ := 'M';
-                --    P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'W', SUBSTR('WARN-NULL frequency converted to Monthly',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
-                --    L_NO_ROW_WAR := L_NO_ROW_WAR + 1;
-                --    L_REC_WAR := true;
-                --ELSE
-                    --L_ERROR_NUMBER := SQLCODE;
-                    --L_ERROR_MESSAGE := SQLERRM;
-                    --P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'E', SUBSTR(L_ERROR_MESSAGE,1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
-                    P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('NULL Meter Frequency',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
-                    L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
-                    L_REC_EXC := true;
-                --END IF;
---*** V3.01 - Issue I-207
---*** V4.01 - REOPENED Issue I-207
+--v9.21 - FORCE OWC properties
+                    IF (t_met(i).OWC_PROPERTY = 1) THEN
+                        IF (L_MO.PHYSICALMETERSIZE >= 80) THEN
+                            L_FREQ.CD_SCHED_FREQ := 'M';
+                        ELSE
+                            L_FREQ.CD_SCHED_FREQ := 'B';
+                        END IF;
+                    ELSE
+                        P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('Meter marked available but out of route,probably not on an active service(e.g.demolished/removed)',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
+                        L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
+                        L_REC_EXC := true;
+                    END IF;
+--v9.21
             end;
 
             L_PROGRESS := 'drop quarterly read rows';
@@ -485,7 +539,7 @@ BEGIN
             -- **** MISSING VALUES ON MAPPING - PENDING UPDATE OF F and V DOC
             elsif  T_MET(I).LOC_STD_EQUIP_41 in ('TA',	'TB',	'TC',	'TD')
                 then L_MO.METERLOCATIONCODE := 'I';
---**** v2.04 WORKAROUND for Issue I-203
+--**** v2.04 WORKAROUND for Issue I-203 (CR_017)
             ELSIF T_MET(I).LOC_STD_EQUIP_41 IS NULL THEN
                 CASE
                     WHEN t_met(i).NM_PREFERRED = 'Smartmeter' THEN L_MO.METERLOCATIONCODE := 'I'; -- IN, Internal Visual
@@ -497,111 +551,140 @@ BEGIN
                 L_NO_ROW_WAR := L_NO_ROW_WAR + 1;
                 L_REC_WAR := true;
 --**** v2.04 I-203
+--v9.21 - FORCE OWC properties
+            ELSIF (t_met(i).OWC_PROPERTY = 1) THEN
+                L_MO.METERLOCATIONCODE := 'I';
+--v9.21
             else
                 P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('Meter Location not in translation table',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
                 L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
                 L_REC_EXC := true;
             END IF ;
 
+--*** v6.01 - Add new fields to split FreeDescriptor values - for SAP
             L_PROGRESS := 'Getting and Concatinating FreeDescriptor';
-            Case
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='A' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('Chamber in field.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='A1' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('BB rural verge.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='A2' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('BB left side front.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='A3' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('BB left side in line.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='A4' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('BB left side rear.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='A5' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('BB in field.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='B1' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('BB front left.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='B5' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('BB rear left.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='BB' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('Boundary box.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='C1' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('BB front in line.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='C5' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('BB rear in line.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='D4' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('BB access reqd.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='D5' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('BB rear right.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='E2' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('BB right side front.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='E3' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('BB right side in line.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='E4' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('BB right side rear.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='D1' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('BB front right.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='T1' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('TP location unknown.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='T2' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('TP front centre.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='T3' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('TP front left.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='T4' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('TP front right.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='T5' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('TP rear centre.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='T6' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('TP ear left.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='T7' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('TP rear right.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='T8' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('TP left side centre.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='T9' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('TP left side front.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='IN' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('Internal visual.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='EX' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('External chamber.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='TE' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('TP Basement.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='TF' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('TP internal other.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='TG' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('TP access reqd.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='TH' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('TP mtr/cboard/rm.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='R1' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('RD no TP/SC.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='R2' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('RD TP/SC on rd.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='R3' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('RD TP/SC off rd.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='R4' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('RD radio.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='F1' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('Radio BB.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='F2' then L_MO.FreeDescriptor := CONCAT(CONCAT(CONCAT('Radio chamber.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                when TRIM(T_MET(I).LOC_STD_EQUIP_41) ='F3' then L_MO.FREEDESCRIPTOR := CONCAT(CONCAT(CONCAT('Radio internal.', T_MET(I).DS_LOCATION),'. '),T_MET(I).TXT_SPECIAL_INSTR);
-                else L_MO.FREEDESCRIPTOR := null;
-            END case;
-
-            L_PROGRESS := 'Checking CD_EXT_REF length to extract GISX or GISY';
-            --GPSX and GPSY transformations
-            if (T_MET(I).CD_EXT_REF like '%;%' and length(TRIM(T_MET(I).CD_EXT_REF)) < 13)
-                then
-                P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('Invalid GISX or GISY length',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
-                L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
-                L_REC_EXC := true;
-            ELSIF (T_MET(I).CD_EXT_REF like '%;%' and length(TRIM(T_MET(I).CD_EXT_REF)) =13)
-                then
-                IF ((NVL(LENGTH(TRIM(TRANSLATE(SUBSTR(T_MET(I).CD_EXT_REF,1,6), '0123456789',' '))),0) = 0) AND (NVL(LENGTH(TRIM(TRANSLATE(SUBSTR(T_MET(I).CD_EXT_REF,8,6), '0123456789',' '))),0) = 0))
-                    THEN
-                    L_MO.GPSX := SUBSTR(T_MET(I).CD_EXT_REF,1,6);
-                    L_MO.GPSY := SUBSTR(T_MET(I).CD_EXT_REF,8,6);
+            L_MO.METERLOCATIONDESC := CASE TRIM(T_MET(I).LOC_STD_EQUIP_41)
+                WHEN 'A' THEN 'Chamber in field '
+                WHEN 'A1' THEN 'BB rural verge '
+                WHEN 'A2' THEN 'BB left side front '
+                WHEN 'A3' THEN 'BB left side in line '
+                WHEN 'A4' THEN 'BB left side rear '
+                WHEN 'A5' THEN 'BB in field '
+                WHEN 'B1' THEN 'BB front left '
+                WHEN 'B5' THEN 'BB rear left '
+                WHEN 'BB' THEN 'Boundary box '
+                WHEN 'C1' THEN 'BB front in line '
+                WHEN 'C5' THEN 'BB rear in line '
+                WHEN 'D4' THEN 'BB access reqd '
+                WHEN 'D5' THEN 'BB rear right '
+                WHEN 'E2' THEN 'BB right side front '
+                WHEN 'E3' THEN 'BB right side in line '
+                WHEN 'E4' THEN 'BB right side rear '
+                WHEN 'D1' THEN 'BB front right '
+                WHEN 'T1' THEN 'TP location unknown '
+                WHEN 'T2' THEN 'TP front centre '
+                WHEN 'T3' THEN 'TP front left '
+                WHEN 'T4' THEN 'TP front right '
+                WHEN 'T5' THEN 'TP rear centre '
+                WHEN 'T6' THEN 'TP rear left '
+                WHEN 'T7' THEN 'TP rear right '
+                WHEN 'T8' THEN 'TP left side centre '
+                WHEN 'T9' THEN 'TP left side front '
+                WHEN 'IN' THEN 'Internal visual '
+                WHEN 'EX' THEN 'External chamber '
+                WHEN 'TE' THEN 'TP Basement '
+                WHEN 'TF' THEN 'TP internal other '
+                WHEN 'TG' THEN 'TP access reqd '
+                WHEN 'TH' THEN 'TP MTR CBOARD/RM '
+                WHEN 'R1' THEN 'RD no TP/SC '
+                WHEN 'R2' THEN 'RD TP/SC on rd '
+                WHEN 'R3' THEN 'RD TP/SC off rd '
+                WHEN 'R4' THEN 'RD radio '
+                WHEN 'F1' THEN 'Radio BB '
+                WHEN 'F2' THEN 'Radio chamber '
+                WHEN 'F3' THEN 'Radio internal '
+                ELSE NULL
+            END;
+            IF (L_MO.METERLOCATIONDESC IS NOT NULL) THEN
+                L_MO.FREEDESCRIPTOR := CONCAT(CONCAT(CONCAT(UPPER(L_MO.METERLOCATIONDESC), T_MET(I).DS_LOCATION),' '),T_MET(I).TXT_SPECIAL_INSTR);
+                L_MO.METERLOCATIONDESC := T_MET(I).LOC_STD_EQUIP_41; --v9.09
+            END IF;
+--*** v6.01
+-- V 9.05
+            L_PROGRESS := 'Validating CD_EXT_REF length to extract GISX or GISY';
+            IF T_MET(I).CD_EXT_REF IS NULL THEN
+                    L_MO.GPSX := 82644.0;    
+                    L_MO.GPSY := 5186.0; 
+            ELSE
+                l_gis_code := FN_VALIDATE_GIS(T_MET(I).CD_EXT_REF);
+            
+                IF l_gis_code LIKE 'Invalid%' THEN
+--***v9.15 - workaround - set to MOSL default values
+                    L_MO.GPSX := 82644.0;    
+                    L_MO.GPSY := 5186.0; 
+                    P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'W', SUBSTR('WARN-' || l_gis_code,1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
+                    L_NO_ROW_WAR := L_NO_ROW_WAR + 1;
+                    L_REC_WAR := true;            
+--***v9.15
                 ELSE
-                    P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('Invalid NON_Numeric GISX or GISY',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
-                    L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
-                    L_REC_EXC := true;
+                    L_MO.GPSX := TO_NUMBER(TRIM(SUBSTR(l_gis_code,1,INSTR(l_gis_code,';')-1)));
+                    L_MO.GPSY := TO_NUMBER(TRIM(SUBSTR(l_gis_code,INSTR(l_gis_code,';')+1)));      
                 END IF;
-            ELSIF T_MET(I).CD_EXT_REF is null
-                then L_MO.GPSX := 82644.0;    --V1.01 - Update to GISX RULES in MOSL Req.
-                L_MO.GPSY := 5186.0;          --V1.01 - Update to GISY RULES in MOSL Req.
-            else
-                P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('Invalid GISX or GISY length > 13',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
-                L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
-                L_REC_EXC := true;
-            end if ;
+            END IF;
+-- V 9.05
+
+--            L_PROGRESS := 'Checking CD_EXT_REF length to extract GISX or GISY';
+--            --GPSX and GPSY transformations
+----***V7.01 MOSL TEST1 Defect m4
+--                if (T_MET(I).CD_EXT_REF like '%;%' and length(TRIM(T_MET(I).CD_EXT_REF)) < 13) then
+--                    P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('Invalid GISX or GISY length',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
+--                    L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
+--                    L_REC_EXC := true;
+--                ELSIF (T_MET(I).CD_EXT_REF like '%;%' and length(TRIM(T_MET(I).CD_EXT_REF)) =13) then
+--                    IF ((NVL(LENGTH(TRIM(TRANSLATE(SUBSTR(T_MET(I).CD_EXT_REF,1,6), '0123456789',' '))),0) = 0) AND (NVL(LENGTH(TRIM(TRANSLATE(SUBSTR(T_MET(I).CD_EXT_REF,8,6), '0123456789',' '))),0) = 0)) THEN
+--                        L_MO.GPSX := SUBSTR(T_MET(I).CD_EXT_REF,1,6);
+--                        L_MO.GPSY := SUBSTR(T_MET(I).CD_EXT_REF,8,6);
+--                    ELSE
+--                        P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('Invalid NON_Numeric GISX or GISY',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
+--                        L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
+--                        L_REC_EXC := true;
+--                    END IF;
+--                ELSIF T_MET(I).CD_EXT_REF is null then 
+--                    L_MO.GPSX := 82644.0;    --V1.01 - Update to GISX RULES in MOSL Req.
+--                    L_MO.GPSY := 5186.0;          --V1.01 - Update to GISY RULES in MOSL Req.
+--                else
+--                    P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('Invalid GISX or GISY length > 13',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
+--                    L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
+--                    L_REC_EXC := true;
+--                end if;
+----***V7.01
 
 --**** V 1.03 Performance optimization code (Consolidate multiple similar rules)
             --OUTREADERID, METEROUTREADERLOCCODE, METEROUTREADERGPSX, METEROUTREADERGPSY, OUTREADERLOCFREEDES
             IF L_MO.REMOTEREADFLAG = 1 THEN
                 IF T_MET(I).ID_SEAL IS NULL THEN
-                    P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('Invalid NULL OUTREADERID when REMOTEREADFLAG = 1',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
-                    L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
-                    L_REC_EXC := TRUE;
+--*** v7.02-v9.04 - CR_017 (1) - workaround for null ID_SEAL                
+                    IF L_MO.REMOTEREADTYPE = 'TOUCH' THEN
+                        L_MO.OUTREADERID := 'Not_available_for_Touchpad';
+                    ELSE
+                        L_MO.OUTREADERID := 'Unavailable';
+                    END IF;
                 ELSE
-                    L_MO.OUTREADERID := T_MET(I).ID_SEAL;
+                    L_MO.OUTREADERID := REPLACE(T_MET(I).ID_SEAL,' ','');
                 END IF;
                 L_MO.METEROUTREADERLOCCODE := 'O';
-                L_MO.METEROUTREADERGPSX := L_MO.GPSX;
-                L_MO.METEROUTREADERGPSY := L_MO.GPSY;
+
+                IF L_MO.OUTREADERID IS NULL THEN 
+                    L_MO.METEROUTREADERGPSX := NULL;
+                    L_MO.METEROUTREADERGPSY := NULL;
+                ELSE
+                    L_MO.METEROUTREADERGPSX := L_MO.GPSX;
+                    L_MO.METEROUTREADERGPSY := L_MO.GPSY;
+                END IF;
+                
                 L_MO.OUTREADERLOCFREEDES := L_MO.FREEDESCRIPTOR;
---*** CR_010 - ADD TRANSFORM RULES FOR OUTREADERPROTOCOL AGAINST LU TABLE
+
                 L_PROGRESS := 'GETTING OUTREADERPROTOCOL';
-                --CASE
-                    --WHEN T_MET(I).CD_MTR_RD_MTHD_330 = 'b' THEN L_MO.OUTREADERPROTOCOL := 'Reads are transmitted over a wired connection from the meter via M-Bus protocol and displayed on the touchpad reader display';
-                    --WHEN T_MET(I).CD_MTR_RD_MTHD_330 = 'c' AND T_MET(I).NM_PREFERRED = 'Radio Actaris' THEN L_MO.OUTREADERPROTOCOL := 'Reads are requested and delivered via 2-way radio communication over 433MHz frequency using RADIAN protocol, the read is displayed on the meter reader¿s handheld display.';
-                    --WHEN T_MET(I).CD_MTR_RD_MTHD_330 = 'd' AND T_MET(I).NM_PREFERRED = 'Radio Actaris' THEN L_MO.OUTREADERPROTOCOL := 'Reads are requested and delivered via 2-way radio communication over 433MHz frequency using RADIAN protocol, the read is displayed on the meter reader¿s handheld display.';
-                    --WHEN T_MET(I).CD_MTR_RD_MTHD_330 = 'c' AND T_MET(I).NM_PREFERRED = 'Schlumberger Water Meters Ltd' THEN L_MO.OUTREADERPROTOCOL := 'Reads are requested and delivered via 2-way radio communication over 433MHz frequency using RADIAN protocol, the read is displayed on the meter reader¿s handheld display.';
-                    --WHEN T_MET(I).CD_MTR_RD_MTHD_330 = 'd' AND T_MET(I).NM_PREFERRED = 'Schlumberger Water Meters Ltd' THEN L_MO.OUTREADERPROTOCOL := 'Reads are requested and delivered via 2-way radio communication over 433MHz frequency using RADIAN protocol, the read is displayed on the meter reader¿s handheld display.';
-                    --ELSE
-                        --L_MO.OUTREADERPROTOCOL := 'NOT KNOWN';
-                        --P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('OutReader Protocol Not Known',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
-                        --L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
-                        --L_REC_EXC := TRUE;
-                --END CASE;
                 BEGIN
                     SELECT DISTINCT OUTREADERPROTOCOL
                     INTO   L_MO.OUTREADERPROTOCOL
@@ -611,23 +694,51 @@ BEGIN
                 EXCEPTION
                     WHEN NO_DATA_FOUND THEN
                         L_MO.OUTREADERPROTOCOL := 'NOT KNOWN';
-                        P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('OutReader Protocol Not Known',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
-                        L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
-                        L_REC_EXC := TRUE;
+                        P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'W', SUBSTR('WARN-OutReader Protocol Unknown',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
+                        L_NO_ROW_WAR := L_NO_ROW_WAR + 1;
+                        L_REC_WAR := TRUE;
                 END;
---*** CR_010
+                IF (UPPER(L_MO.OUTREADERPROTOCOL) = 'NOT KNOWN') THEN
+                    P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'W', SUBSTR('WARN-OutReader Protocol Not Known',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
+                    L_NO_ROW_WAR := L_NO_ROW_WAR + 1;
+                    L_REC_WAR := TRUE;
+                END IF;
+            END IF;
+            
+-- *** v8.03 - Set GPSX and Y to NULL if NONMARKETMETER, but still keep OUTREADERGPSX and Y
+            IF (t_met(i).NONMARKETMETERFLAG = 1) THEN
+                L_MO.GPSX := NULL;
+                L_MO.GPSY := NULL;
             END IF;
 
             L_PROGRESS := 'GETTING WATERCHARGEMETERSIZE';
             --WATERCHARGEMETERSIZE
             if L_MO.PHYSICALMETERSIZE is not null then
+--*** v9.19 Check tariff if any water charge component
                 IF L_MO.METERTREATMENT = 'SEWERAGE' THEN
                     L_MO.SEWCHARGEABLEMETERSIZE := L_MO.PHYSICALMETERSIZE;
                     L_MO.WATERCHARGEMETERSIZE := 0;
                 ELSE
                     L_MO.WATERCHARGEMETERSIZE := L_MO.PHYSICALMETERSIZE;
-                    L_MO.SEWCHARGEABLEMETERSIZE := NULL;
+                      L_MO.SEWCHARGEABLEMETERSIZE := NULL;                  
                 END IF;
+-- *** NEED TO TEST MOSL VALIDATION AND CHECK WITH SETTLEMENT ****
+--                  BEGIN
+--                      SELECT COUNT(*) INTO l_water_charge_cnt 
+--                      FROM MO_MPW_METER_MWMFC MMMM 
+--                          JOIN MO_TARIFF_TYPE_MPW MTTM ON MTTM.TARIFF_TYPE_PK = MMMM.TARIFF_TYPE_PK
+--                          JOIN MO_TARIFF_VERSION MTV ON MTV.TARIFF_VERSION_PK = MTTM.TARIFF_VERSION_PK
+--                          JOIN MO_SERVICE_COMPONENT MSC ON MSC.TARIFFCODE_PK = MTV.TARIFFCODE_PK 
+--                      WHERE SERVICECOMPONENTTYPE = 'MPW'
+--                      AND MSC.SPID_PK = T_MET(I).SPID_PK;
+--                  END;
+--                  IF l_water_charge_cnt > 0 THEN
+--                      L_MO.WATERCHARGEMETERSIZE := L_MO.PHYSICALMETERSIZE;
+--                  ELSE
+--                      L_MO.WATERCHARGEMETERSIZE := 0;
+--                  END IF;
+--                  L_MO.SEWCHARGEABLEMETERSIZE := NULL;
+--*** v9.19
             ELSIF  L_MO.PHYSICALMETERSIZE is null
                 then
                 --L_MO.WATERCHARGEMETERSIZE := 'Invalid';
@@ -708,12 +819,22 @@ BEGIN
                         ,	METERADDITIONREASON,	METERLOCATIONCODE,	METERLOCFREEDESCRIPTOR,	METERNETWORKASSOCIATION,	METEROUTREADERGPSX,	METEROUTREADERGPSY,	METEROUTREADERLOCCODE,	METERREADFREQUENCY,	METERREF,	METERREMOVALREASON
                         ,	METERTREATMENT,	NUMBEROFDIGITS,	OUTREADERID,	OUTREADERLOCFREEDES,	OUTREADERPROTOCOL,	PHYSICALMETERSIZE,	REMOTEREADFLAG,	REMOTEREADTYPE,	RETURNTOSEWER,	SEWCHARGEABLEMETERSIZE,	SPID_PK,	WATERCHARGEMETERSIZE,	YEARLYVOLESTIMATE
                         , NONMARKETMETERFLAG  --*** CR_04 flag for marketable or nonmarketable meter
+                        , METERLOCATIONDESC, METERLOCSPECIALLOC, METERLOCSPECIALINSTR, MANUFCODE, INSTALLEDPROPERTYNUMBER  --*** v6.01
+                        , SAPEQUIPMENT  --v8.01
+                        , MASTER_PROPERTY  --v9.07
+                        , METER_MODEL   --v9.09
+                        , UNITOFMEASURE --v9.12
                         )
                     VALUES
-                        (T_MET(I).COMBIMETERFLAG, L_HLT.DATALOGGERNONWHOLESALER,L_HLT.DATALOGGERWHOLESALER,TRIM(L_MO.FREEDESCRIPTOR),L_MO.GPSX,L_MO.GPSY,TRIM(T_MET(I).NM_PREFERRED),TRIM(T_MET(I).NO_UTL_EQUIP),NULL, TRIM(L_MO.MEASUREUNITATMETER),TRIM(L_MO.MEASUREUNITFREEDESCRIPTOR)
+                        (T_MET(I).COMBIMETERFLAG, L_HLT.DATALOGGERNONWHOLESALER,L_HLT.DATALOGGERWHOLESALER,TRIM(L_MO.FREEDESCRIPTOR),L_MO.GPSX,L_MO.GPSY,TRIM(L_MO.MANUFACTURER_PK),TRIM(l_mo.MANUFACTURERSERIALNUM_PK),NULL, TRIM(L_MO.MEASUREUNITATMETER),TRIM(L_MO.MEASUREUNITFREEDESCRIPTOR)
                         ,NULL,TRIM(L_MO.METERLOCATIONCODE),TRIM(L_MO.FREEDESCRIPTOR),0, L_MO.METEROUTREADERGPSX,L_MO.METEROUTREADERGPSY,TRIM(L_MO.METEROUTREADERLOCCODE),TRIM(L_FREQ.CD_SCHED_FREQ),T_MET(I).NO_EQUIPMENT,NULL
-                        ,TRIM(T_MET(I).METERTREATMENT),L_MO.NUMBEROFDIGITS,TRIM(L_MO.OUTREADERID),TRIM(L_MO.OUTREADERLOCFREEDES),TRIM(L_MO.OUTREADERPROTOCOL),L_MO.PHYSICALMETERSIZE,L_MO.REMOTEREADFLAG,TRIM(L_MO.REMOTEREADTYPE),NULL,L_MO.SEWCHARGEABLEMETERSIZE, TRIM(T_MET(I).SPID_PK), L_MO.WATERCHARGEMETERSIZE, L_MO.YEARLYVOLESTIMATE
+                        ,TRIM(T_MET(I).METERTREATMENT),L_MO.NUMBEROFDIGITS,TRIM(L_MO.OUTREADERID),TRIM(L_MO.OUTREADERLOCFREEDES),TRIM(L_MO.OUTREADERPROTOCOL),L_MO.PHYSICALMETERSIZE,L_MO.REMOTEREADFLAG,TRIM(L_MO.REMOTEREADTYPE),T_MET(I).RETURNTOSEWER,L_MO.SEWCHARGEABLEMETERSIZE, TRIM(T_MET(I).SPID_PK), L_MO.WATERCHARGEMETERSIZE, L_MO.YEARLYVOLESTIMATE
                         , T_MET(I).NONMARKETMETERFLAG  --*** CR_04 flag for marketable or nonmarketable meter
+                        , L_MO.METERLOCATIONDESC, T_MET(I).DS_LOCATION, T_MET(I).TXT_SPECIAL_INSTR, L_MO.MANUFCODE, T_MET(I).NO_PROPERTY  --*** v6.01
+                        , T_MET(I).SAPEQUIPMENT   --v8.01
+                        , T_MET(I).NO_PROPERTY_MASTER  --v9.07
+                        , T_MET(I).METER_MODEL    --v9.09
+                        , T_MET(I).CD_UNIT_OF_MEASURE   --v9.12
                         );
                 EXCEPTION
                     WHEN OTHERS THEN
@@ -742,6 +863,12 @@ BEGIN
 
                 IF l_rec_written THEN
                     l_no_row_insert := l_no_row_insert + 1;
+                    IF T_MET(I).NONMARKETMETERFLAG = 0 THEN                             --SI-031
+                      l_marketable_meter_cnt := l_marketable_meter_cnt + 1;             --SI-031
+                      IF T_MET(I).SAPEQUIPMENT IS NULL THEN                             --SI-031
+                         l_marketable_new_meter_cnt := l_marketable_new_meter_cnt + 1;  --SI-031
+                      END IF;                                                           --SI-031
+                    END IF;                                                             --SI-031
                 end if;
             end if;  --close of if  L_REC_EXC statement
             l_prev_prp := t_met(i).NO_EQUIPMENT;
@@ -765,6 +892,8 @@ BEGIN
     P_MIG_BATCH.FN_RECONLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'CP32', 1090, L_NO_ROW_READ,    'Distinct Eligible Meters read during Transform');
     P_MIG_BATCH.FN_RECONLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'CP32', 1100, L_NO_ROW_DROPPED, 'Eligible Meters  dropped during Transform');
     P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP32', 1110, l_no_row_insert,  'Eligible Meters written to MO_METER during Transform');
+    P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP32', 1111, l_marketable_meter_cnt,  'Eligible Marketable Meters written to MO_METER during Transform');  --SI-031
+    P_MIG_BATCH.FN_RECONLOG(no_batch, l_job.NO_INSTANCE, 'CP32', 1112, l_marketable_new_meter_cnt,  'Eligible New Marketable Meters written to MO_METER during Transform');  --SI-031
 
     --  check counts match
 
@@ -794,7 +923,6 @@ WHEN OTHERS THEN
      commit;
      RETURN_CODE := -1;
 END P_MOU_TRAN_METER_TARGET;
-/
 /
 show errors;
 exit;

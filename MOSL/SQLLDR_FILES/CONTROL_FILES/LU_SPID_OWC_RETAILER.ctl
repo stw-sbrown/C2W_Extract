@@ -1,0 +1,16 @@
+--
+-- Subversion $Revision: 5194 $	
+--
+load data
+into table LU_SPID_OWC_RETAILER
+fields terminated by "|"
+(
+STWPROPERTYNUMBER_PK,
+STWACCOUNTNUMBER,
+CUSTOMERNAME,
+METERREF,
+STWSERVICETYPE,
+WCRETAILER,
+TARIFF,
+NO_LEGAL_ENTITY
+)

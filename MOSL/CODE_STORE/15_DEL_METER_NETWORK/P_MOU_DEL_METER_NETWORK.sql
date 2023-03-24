@@ -29,6 +29,10 @@ PROCEDURE P_MOU_DEL_METER_NETWORK (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
 --                                    files
 -- V 1.02      18/05/2016  K.Burton   Changes to MANUFACTURER_PK to remove spaces from names as per
 --                                    MOSL upload file feedback
+-- V 1.03      05/07/2016  D.Cheung   I-274 - Change TXT_KEY to SUBMANUFACTURERSERIALNUM
+-- V 1.04      07/07/2016  D.Cheung   CR_021 - Add NonMarketMeter flag to table to manage two level spid constraints
+-- V 1.05      25/08/2016  S.Badhan   I-320. If user FINDEL use directory FINEXPORT.
+-- V 1.06      01/09/2016  K.Burton   Updates for splitting STW data into 3 batches
 -----------------------------------------------------------------------------------------
 
   c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_DEL_METER_NETWORK';
@@ -70,7 +74,8 @@ PROCEDURE P_MOU_DEL_METER_NETWORK (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
            MAINMETERTREATMENT,
            SUBMANUFACTURERSERIALNUM,
            SUBMANUFACTURER,
-           SUBMETERTREATMENT
+           SUBMETERTREATMENT,
+           MAINNONMARKETFLAG
     FROM (
     SELECT MN.MAIN_SPID SPID_PK,
         MN.MAIN_MANSERIALNUM_PK MAINMANUFACTURERSERIALNUM,
@@ -80,8 +85,10 @@ PROCEDURE P_MOU_DEL_METER_NETWORK (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
         MN.SUB_MANSERIALNUM_PK SUBMANUFACTURERSERIALNUM,
         MN.SUB_MANUFACTURER_PK SUBMANUFACTURER_PK,
            UPPER(REPLACE(MN.SUB_MANUFACTURER_PK,' ','')) SUBMANUFACTURER, -- V 1.02
-        NULL SUBMETERTREATMENT  -- NOT OUTPUT TO FILE
+        NULL SUBMETERTREATMENT,  -- NOT OUTPUT TO FILE
+        MM.NONMARKETMETERFLAG MAINNONMARKETFLAG
     FROM MOUTRAN.MO_METER_NETWORK MN
+        JOIN MOUTRAN.MO_METER MM ON (MM.METERREF = MN.MAIN_METERREF)
     ORDER BY MN.MAIN_SPID);
 
   TYPE tab_meter_network IS TABLE OF cur_meter_network%ROWTYPE INDEX BY PLS_INTEGER;
@@ -103,6 +110,10 @@ BEGIN
    l_no_row_exp := 0;
    l_job.IND_STATUS := 'RUN';
 
+   IF USER = 'FINDEL' THEN
+      l_filepath := 'FINEXPORT';
+   END IF;
+   
    -- get job no and start job
    P_MIG_BATCH.FN_STARTJOB(no_batch, no_job, c_module_name,
                          l_job.NO_INSTANCE,
@@ -139,7 +150,7 @@ BEGIN
     FOR i IN 1..t_meter_network.COUNT
     LOOP
       l_no_row_read := l_no_row_read + 1;
-      l_err.TXT_KEY := t_meter_network(i).SPID_PK;
+      l_err.TXT_KEY := t_meter_network(i).SUBMANUFACTURERSERIALNUM;
         l_rec_written := TRUE;
         BEGIN
           -- write the data to the delivery table
@@ -174,43 +185,6 @@ BEGIN
         -- keep count of records written
         IF l_rec_written THEN
            l_no_row_insert := l_no_row_insert + 1;
-
---          BEGIN
---            l_progress := 'write row export file ';
---
---            UTL_FILE.PUT(fHandle,t_meter_network(i).SPID_PK || '|');
---            UTL_FILE.PUT(fHandle,t_meter_network(i).MAINMANUFACTURERSERIALNUM || '|');
---            UTL_FILE.PUT(fHandle,t_meter_network(i).MAINMANUFACTURER || '|');
---            UTL_FILE.PUT(fHandle,t_meter_network(i).SUBMANUFACTURERSERIALNUM || '|');
---            UTL_FILE.PUT_LINE(fHandle,t_meter_network(i).SUBMANUFACTURER); -- V 0.04
---
---          EXCEPTION
---            WHEN OTHERS THEN
---                 l_rec_written := FALSE;
---                 l_error_number := SQLCODE;
---                 l_error_message := SQLERRM;
---
---                 P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', substr(l_error_message,1,100),  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
---                 l_no_row_exp := l_no_row_exp + 1;
---
---                 -- if tolearance limit has een exceeded, set error message and exit out
---                 IF (   l_no_row_exp > l_job.EXP_TOLERANCE
---                     OR l_no_row_err > l_job.ERR_TOLERANCE
---                     OR l_no_row_war > l_job.WAR_TOLERANCE)
---                 THEN
---                     CLOSE cur_meter_network;
---                     l_job.IND_STATUS := 'ERR';
---                     P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', 'Error tolerance level exceeded',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
---                     P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
---                     COMMIT;
---                     return_code := -1;
---                     RETURN;
---                  END IF;
---          END;
---
---          IF l_rec_written THEN
---             l_no_row_written := l_no_row_written + 1;
---          END IF;
         END IF;
     END LOOP;
 
@@ -220,61 +194,36 @@ BEGIN
     CASE w.WHOLESALER_ID 
       WHEN 'ANGLIAN-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_NETWORK_ANW_V';
-        l_filename := 'METER_NETWORK_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_NETWORK_ANW_V;
-        END IF;
       WHEN 'DWRCYMRU-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_NETWORK_WEL_V';
-        l_filename := 'METER_NETWORK_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_NETWORK_WEL_V;
-        END IF;
       WHEN 'SEVERN-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_NETWORK_STW_V';
-        l_filename := 'METER_NETWORK_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_NETWORK_STW_V;
-        END IF;
+      WHEN 'SEVERN-A' THEN
+        l_sql := 'SELECT * FROM DEL_METER_NETWORK_STWA_V';
+      WHEN 'SEVERN-B' THEN
+        l_sql := 'SELECT * FROM DEL_METER_NETWORK_STWB_V';
       WHEN 'THAMES-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_NETWORK_THW_V';
-        l_filename := 'METER_NETWORK_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_NETWORK_THW_V;
-        END IF;
       WHEN 'WESSEX-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_NETWORK_WEW_V';
-        l_filename := 'METER_NETWORK_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_NETWORK_WEW_V;
-        END IF;
       WHEN 'YORKSHIRE-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_NETWORK_YOW_V';
-        l_filename := 'METER_NETWORK_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_NETWORK_YOW_V;
-        END IF;
       WHEN 'UNITED-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_NETWORK_UUW_V';
-        l_filename := 'METER_NETWORK_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_NETWORK_UUW_V;
-        END IF;
       WHEN 'SOUTHSTAFF-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_NETWORK_SSW_V';
-        l_filename := 'METER_NETWORK_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_NETWORK_SSW_V;
-        END IF;
     END CASE;
     IF w.RUN_FLAG = 1 THEN
+      l_filename := 'METER_NETWORK_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
       P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
       l_no_row_written := l_no_row_written + l_rows_written; -- add rows written to total
     ELSE
+      l_sql := 'SELECT COUNT(*) FROM DEL_METER_NETWORK MN, DEL_SUPPLY_POINT SP WHERE MN.SPID_PK = SP.SPID_PK AND SP.WHOLESALERID = :wholesaler';
+      EXECUTE IMMEDIATE l_sql INTO l_count USING w.WHOLESALER_ID;
       l_no_row_dropped_cb := l_no_row_dropped_cb + l_count;
     END IF;
   END LOOP;
-  
+
     IF t_meter_network.COUNT < l_job.NO_COMMIT THEN
        EXIT;
     ELSE
@@ -284,7 +233,6 @@ BEGIN
   END LOOP;
 
   CLOSE cur_meter_network;
---  UTL_FILE.FCLOSE(fHandle);
 
   -- archive the latest batch
   P_DEL_UTIL_ARCHIVE_TABLE(p_tablename => l_tablename,

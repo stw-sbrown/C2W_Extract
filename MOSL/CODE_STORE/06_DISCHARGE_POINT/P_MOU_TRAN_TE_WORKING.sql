@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_TE_WORKING.sql
 --
--- Subversion $Revision: 4026 $
+-- Subversion $Revision: 5333 $
 --
 -- CREATED        : 13/05/2016
 --
@@ -23,6 +23,8 @@ IS
 -- Version     Date        Author     Description
 -- ---------   ----------  --------   --------------------------------------------------
 -- V 0.01      13/05/2016  L.Smith    Initial version
+-- V 0.02      07/06/2016  L.Smith    Column rounding
+-- V 0.03      01/09/2016  L.Smith    Period 16 only
 -----------------------------------------------------------------------------------------
 
   c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_TE_WORKING';
@@ -42,30 +44,40 @@ IS
   l_water_sp                    NUMBER(9);
   l_sewage_sp                   NUMBER(9);
   l_le                          NUMBER(9);
+  l_te_vol_calc                 BT_TE_WORKING.TE_VOL_CALC%TYPE;
+  l_ouw_vol_calc                BT_TE_WORKING.OUW_VOL_CALC%TYPE;
   l_rec_written                 BOOLEAN;
 
 -- SELECT Trade Effluent working data migrated from the customer database
 -- Note: end_read_calculated has been used in calculations due to missing data
 CURSOR cur_te_working
     IS
-    SELECT no_account,
+    SELECT no_iwcs,
+           met_ref,
+           period,
+           stage,
+           start_date,
+           start_read,
+           end_date,
+           end_read,
+           no_account,
            no_account_ref,
            fa_yn,
            CASE -- See spreadsheet working tab column (AD) Formula
               WHEN fa_yn = 'Y' AND te_revised_name IS NOT NULL THEN
                  CASE
-                    WHEN te_revised_name != 'Domestic' AND te <= 0 AND end_read_calculated IS NOT NULL AND start_date IS NOT NULL AND units IS NOT NULL THEN
-                       (end_read_calculated - start_read) * units
+                    WHEN te_revised_name != 'Domestic' AND te <= 0 AND end_read_base IS NOT NULL AND start_read IS NOT NULL AND units IS NOT NULL THEN
+                       ROUND((end_read_base + end_read_add2 - start_read) * units,0)
                  END
            END AS fa_vol,
            da_yn,
            CASE -- See spreadsheet working tab column (AF) Formula
               WHEN da_yn = 'Y' AND unit IS NOT NULL THEN
                  CASE 
-                    WHEN unit = 'Head' AND start_read IS NOT NULL AND end_read_calculated IS NOT NULL AND units IS NOT NULL THEN
-                       (end_read_calculated - start_read) * units
-                    WHEN unit != 'Head' AND te_year IS NOT NULL AND end_read_calculated IS NOT NULL AND units IS NOT NULL THEN
-                       (te_year / 2) * end_read_calculated * units
+                    WHEN unit = 'Head' AND start_read IS NOT NULL AND end_read_base IS NOT NULL AND units IS NOT NULL THEN
+                       ROUND((te_year / 2) * (end_read_base + end_read_add1) * units,0)
+                    WHEN unit != 'Head' AND te_year IS NOT NULL AND end_read_base IS NOT NULL AND units IS NOT NULL THEN
+                       ROUND((end_read_base + end_read_add1 - start_read) * units,0)
                  END
            END AS da_vol,
            pa_yn,
@@ -73,53 +85,87 @@ CURSOR cur_te_working
               WHEN pa_yn = 'Y' AND te IS NOT NULL THEN
                  CASE 
                     WHEN te > 0 AND te < 1 THEN
-                       1 - te
+                       ROUND(1 - te,2)
                     WHEN te > -1 AND te < 0 THEN
-                       1- (-1 * te)
+                       ROUND(1- (-1 * te),2)
                  END
            END AS pa_perc,
            mdvol_for_ws_meter_yn,
            CASE -- See spreadsheet working tab column (AJ) Formula
-              WHEN mdvol_for_ws_meter_yn = 'Y' AND NVL(te,-1) > 0 THEN
+              WHEN mdvol_for_ws_meter_yn = 'Y' AND NVL(te,0) > 0 THEN
                  1
+              WHEN mdvol_for_ws_meter_yn = 'Y' AND NVL(ms,1) > 0 THEN
+                 0
            END AS mdvol_for_ws_meter_perc,
            mdvol_for_te_meter_yn,
            CASE -- See spreadsheet working tab column (AL) Formula
-              WHEN mdvol_for_te_meter_yn = 'Y' AND NVL(te,-1) > 0 THEN
+              WHEN mdvol_for_te_meter_yn = 'Y' AND NVL(te,0) > 0 THEN
                  1
+              WHEN mdvol_for_te_meter_yn = 'Y' AND NVL(ms,1) > 0 THEN
+                 0
            END AS mdvol_for_te_meter_perc,
            calc_discharge_yn,
            CASE -- See spreadsheet working tab column (AN) Formula
-              WHEN end_read_calculated IS NULL OR start_read IS NULL OR UNITS IS NULL THEN
+              WHEN end_read_base IS NULL OR start_read IS NULL OR UNITS IS NULL THEN
                  NULL
               WHEN calc_discharge_yn = 'Y' AND te_category = 'Calculated' THEN
-                 (end_read_calculated - start_read) * units
+                 ROUND((NVL(end_read,end_read_base + end_read_add2) - start_read) * units,0)
            END AS calc_discharge_vol,
+           CASE -- See spreadsheet summary tab (P) Formula and (AM)
+              WHEN start_read IS NULL AND end_read_base IS NULL THEN
+                 NULL
+              WHEN te_category LIKE '%Water Meter%' AND mdvol_for_ws_meter_yn = 'Y' AND NVL(te,0) > 0 THEN
+                 ROUND((end_read_base - NVL(start_read,0)),0)
+           END AS ws_vol,
+           CASE -- See spreadsheet summary tab (Q) Formula
+              WHEN start_read IS NULL AND end_read_base IS NULL THEN
+                 NULL
+              WHEN te_category IN ('Private TE Meter','Private Water Meter') THEN
+                 ROUND(end_read_base - NVL(start_read,0),0)
+           END AS sub_meter,
            te_revised_name,
            te_category,
-           period,
-           met_ref,
            serial_no,
            refdesc,
            target_ref,
            unit,
            units,
-           start_date,
-           start_read,
            code,
-           end_date,
-           end_read,
            codea,
            te,
            te_vol,
            ms,
            ms_vol,
-           no_iwcs,
-           stage,
            reason,
            ouw_year,
            te_year,
-           end_read_calculated
+           end_read_add1,
+           end_read_add2,
+           end_read_base,
+           CASE -- end_read_calculation calculates the end_read column where no data exists in teaccess.meter_data
+              WHEN end_read IS NOT NULL THEN
+                 end_read
+              WHEN te_category IN ('Private TE Meter','Private Water Meter') OR te_category LIKE '%Water Meter%' THEN
+                 end_read_base + end_read_add3
+              WHEN da_yn = 'Y' THEN
+                 end_read_base + end_read_add1
+              ELSE
+                 end_read_base + end_read_add2
+           END AS end_read_calculated,
+           CASE  -- end_read_check is a recalculation of the end_read column for all no_iwcs rows to validate the results match existing end_read data (Proof test).
+              WHEN te_category IN ('Private TE Meter','Private Water Meter') OR te_category LIKE '%Water Meter%' THEN
+                 end_read_base + end_read_add3
+              WHEN da_yn = 'Y' THEN
+                 end_read_base + end_read_add1
+              ELSE
+                 end_read_base + end_read_add2
+           END AS end_read_check,
+           CASE -- See spreadsheet summary tab (R) Formula
+              WHEN te_category = 'TE Meter' THEN
+                 NVL(te_vol,0)
+              ELSE
+                 0
+           END AS te_vol_filtered
       FROM
        (SELECT -- Removes the hyphen and any subsequent data
                CASE WHEN INSTR(
@@ -142,38 +188,39 @@ CURSOR cur_te_working
                             )
                END AS no_account,
                cd.no_account   no_account_ref,
-               CASE -- Derive FA_YN marker using excel rules (See Spreadsheet Calculations with MO Rules)
-                  WHEN lu1.te_category = 'Fixed' AND te_working_data.te = -1 THEN
+               CASE -- Derive FA_YN marker using excel rules (See Spreadsheet Calculations with MO Rules) **** Amended to match work sheet cell rules ADnn
+                  WHEN UPPER(lu1.te_category) = 'FIXED' AND te_working_data.te <= 0 THEN
                      'Y'
                   ELSE
                      'N'
                END AS fa_yn,
                CASE  -- Derive DA_YN marker using excel rules (See Spreadsheet Calculations with MO Rules)
-                  WHEN lu1.te_category = 'Domestic' THEN
+                  WHEN UPPER(lu1.te_category) = 'DOMESTIC' THEN
                      'Y'
                   ELSE
                      'N'
                END AS da_yn,
-               CASE  -- Derive PA_YN marker using excel rules (See Spreadsheet Calculations with MO Rules)
-                  WHEN te_working_data.te BETWEEN 0 and 1 THEN
+               CASE  -- Derive PA_YN marker using excel rules (See Spreadsheet Calculations with MO Rules) **** Amended to match work sheet cell rules AHnn
+                  WHEN (te_working_data.te > 0 and te_working_data.te < 1)
+                       OR (te_working_data.te > -1 and te_working_data.te < 0) THEN
                      'Y'
                   ELSE
                      'N'
                END AS pa_yn,
-               CASE  -- Derive MDVOL_FOR_WS_METER_YN marker using excel rules (See Spreadsheet Calculations with MO Rules)
-                  WHEN lu1.te_category = 'Water Meter' AND te_working_data.te = 1 AND te_working_data.ms = 0 THEN
+               CASE  -- Derive MDVOL_FOR_WS_METER_YN marker using excel rules (See Spreadsheet Calculations with MO Rules) **** Amended to match work sheet cell rules AJnn
+                  WHEN UPPER(lu1.te_category) = 'WATER METER' AND (NVL(te_working_data.te,0) > 0 OR NVL(te_working_data.ms,1) > 0) THEN
                      'Y'
                   ELSE
                      'N'
                END AS mdvol_for_ws_meter_yn,
-               CASE  -- Derive MDVOL_FOR_TE_METER_YN marker using excel rules (See Spreadsheet Calculations with MO Rules)
-                  WHEN lu1.te_category IN ('TE Meter', 'Private TE Meter') AND te_working_data.te = 1 AND te_working_data.ms = 0 THEN
+               CASE  -- Derive MDVOL_FOR_TE_METER_YN marker using excel rules (See Spreadsheet Calculations with MO Rules) **** Amended to match work sheet cell rules ALnn
+                  WHEN UPPER(lu1.te_category) LIKE '%TE%' AND (NVL(te_working_data.te,0) > 0 OR NVL(te_working_data.ms,1) > 0) THEN
                      'Y'
                   ELSE
                      'N'
                END AS mdvol_for_te_meter_yn,
                CASE  -- Derive CALC_DISCHARGE_YN marker using excel rules (See Spreadsheet Calculations with MO Rules)
-                  WHEN lu1.te_category = 'Calculated' THEN
+                  WHEN UPPER(lu1.te_category) = 'CALCULATED' THEN
                      'Y'
                   ELSE
                      'N'
@@ -202,8 +249,13 @@ CURSOR cur_te_working
                te_working_data.reason,
                te_working_data.ouw_year,
                te_working_data.te_year,
-               end_read_calculated
-          FROM (SELECT md.period,
+               end_read_add1,
+               end_read_add2,
+               end_read_add3,
+               end_read_base
+          FROM (SELECT md.no_iwcs,
+                       md.period,
+                       md.stage,
                        md.met_ref,
                        md.serial_no,
                        md.refdesc,
@@ -211,27 +263,47 @@ CURSOR cur_te_working
                        md.unit,
                        md.units,
                        md.start_date,
-                       md.start_read,
+                       NVL(md.start_read,0) start_read,
                        md.code,
                        md.end_date,
-                       md.end_read,
+                       TO_NUMBER(md.end_read) end_read,
                        md.codea,
                        md.te,
                        md.te_vol,
                        md.ms,
                        md.ms_vol,
-                       md.no_iwcs,
-                       md.stage,
                        md.reason,
                        md.ouw_year,
                        md.te_year,
                        NVL(end_read,
-                           NVL(start_read,0) + NVL(te_vol,0)
-                          ) end_read_calculated,
-                       ROW_NUMBER() OVER (PARTITION BY no_iwcs, met_ref
-                                          ORDER BY no_iwcs, met_ref, period DESC, NVL(end_read,NVL(start_read,0) + NVL(te_vol,0)) DESC NULLS LAST) latest_iwcs  -- Amended to use end_read_calculated
+                           NVL(start_read,0)
+                          ) end_read_base,
+                       CASE
+                          WHEN end_read IS NULL THEN
+                             -- translate negative values to positive
+                             NVL(ABS(te_vol),0) * 10
+                          ELSE
+                             0   
+                       END AS end_read_add1,
+                       CASE
+                          WHEN end_read IS NULL THEN
+                             -- translate negative values to positive
+                             DECODE(  SIGN( NVL(te_vol/te,0)), 1,NVL(te_vol/te,0), -1,NVL(te_vol/te,0)*-1, 0)
+                          ELSE
+                             0
+                       END AS end_read_add2,
+                       CASE
+                          WHEN end_read IS NULL THEN
+                             -- translate negative values to positive
+                             DECODE(  SIGN( NVL(ms_vol,0)), 1,NVL(ms_vol,0), -1,NVL(ms_vol,0)*-1, 0)
+                          ELSE
+                             0
+                       END AS end_read_add3,
+                       ROW_NUMBER() OVER (PARTITION BY no_iwcs, period, stage, met_ref
+                                          ORDER BY no_iwcs, period DESC, stage, met_ref, NVL(end_read,0) DESC, NVL(start_read,0) DESC, NVL(te_vol,0) DESC ) latest_iwcs
                   FROM teaccess.meter_data md
-                 WHERE period >= 15                                   -- Business rule
+                 WHERE period = 16                                    -- Business currently requires period 16 data only
+--                 WHERE period BETWEEN 14 AND 16                       -- Business currently requires at least one years data
 --                   AND start_date IS NOT NULL                       -- Filter inactive accounts
 --                   AND NVL(end_date,sysdate) >= sysdate             -- Filter inactive accounts
                ) te_working_data
@@ -243,7 +315,8 @@ CURSOR cur_te_working
             ON te_working_data.refdesc = lu1.te_refdesc
          WHERE latest_iwcs = 1                                         -- Latest iwcs
 --           AND cd.no_account IS NOT NULL;                             -- Filter rows without a no_account
-       );
+       )
+ ORDER BY no_iwcs, period DESC, stage, met_ref;
 
   TYPE tab_te_working IS TABLE OF cur_te_working%ROWTYPE INDEX BY PLS_INTEGER;
   t_te_working  tab_te_working;
@@ -292,26 +365,40 @@ BEGIN
       l_err.TXT_KEY := t_te_working(i).no_iwcs||','||t_te_working(i).met_ref;
       l_rec_written := TRUE;
       l_no_row_read := l_no_row_read + 1;
+      
+      l_te_vol_calc := ROUND(NVL(t_te_working(i).fa_vol,0)/10 + 
+                             NVL(t_te_working(i).calc_discharge_vol,0) +
+                             NVL(t_te_working(i).ws_vol,0),
+                             0
+                            );
 
+      l_ouw_vol_calc := ROUND(NVL(t_te_working(i).ms_vol,0),0);
+          
       BEGIN
         INSERT INTO bt_te_working (
-           NO_ACCOUNT,              ACCOUNT_REF,       TE_REVISED_NAME,       TE_CATEGORY,             PERIOD,     
-           MET_REF,                 SERIAL_NO,         REFDESC,               TARGET_REF,              UNIT,
-           UNITS,                   START_DATE,        START_READ,            CODE,                    END_DATE,   
-           END_READ,                CODEA,             TE,                    TE_VOL,                  MS,
-           MS_VOL,                  NO_IWCS,           STAGE,                 REASON,                  OUW_YEAR,
-           TE_YEAR,                 FA_YN,             FA_VOL,                DA_YN,                   DA_VOL,
-           PA_YN,                   PA_PERC,           MDVOL_FOR_WS_METER_YN, MDVOL_FOR_WS_METER_PERC, MDVOL_FOR_TE_METER_YN,
-           MDVOL_FOR_TE_METER_PERC, CALC_DISCHARGE_YN, CALC_DISCHARGE_VOL)
+           NO_ACCOUNT,            ACCOUNT_REF,             PERIOD,                 STAGE,
+           TE_REVISED_NAME,       TE_CATEGORY,             MET_REF,                SERIAL_NO,
+           REFDESC,               TARGET_REF,              UNIT,                   UNITS,
+           START_DATE,            START_READ,              CODE,                   END_DATE,
+           END_READ,              CODEA,                   TE,                     TE_VOL,
+           MS,                    MS_VOL,                  NO_IWCS,                REASON,
+           OUW_YEAR,              TE_YEAR,                 FA_YN,                  FA_VOL,
+           DA_YN,                 DA_VOL,                  PA_YN,                  PA_PERC,
+           MDVOL_FOR_WS_METER_YN, MDVOL_FOR_WS_METER_PERC, MDVOL_FOR_TE_METER_YN,  MDVOL_FOR_TE_METER_PERC,
+           CALC_DISCHARGE_YN,     CALC_DISCHARGE_VOL,      WS_VOL,                 SUB_METER,
+           TE_VOL_FILTERED,       TE_VOL_CALC,           OUW_VOL_CALC)
         VALUES (
-           t_te_working(i).no_account,              t_te_working(i).no_account_ref,    t_te_working(i).te_revised_name,       t_te_working(i).te_category,              t_te_working(i).period,
-           t_te_working(i).met_ref,                 t_te_working(i).serial_no,         t_te_working(i).refdesc,               t_te_working(i).target_ref,               t_te_working(i).unit,
-           t_te_working(i).units,                   t_te_working(i).start_date,        t_te_working(i).start_read,            t_te_working(i).code,                     t_te_working(i).end_date,
-           t_te_working(i).end_read_calculated,     t_te_working(i).codea,             t_te_working(i).te,                    t_te_working(i).te_vol,                   t_te_working(i).ms,
-           t_te_working(i).ms_vol,                  t_te_working(i).no_iwcs,           t_te_working(i).stage,                 t_te_working(i).reason,                   t_te_working(i).ouw_year,
-           t_te_working(i).te_year,                 t_te_working(i).fa_yn,             t_te_working(i).fa_vol,                t_te_working(i).da_yn,                    t_te_working(i).da_vol,
-           t_te_working(i).pa_yn,                   t_te_working(i).pa_perc,           t_te_working(i).mdvol_for_ws_meter_yn, t_te_working(i).mdvol_for_ws_meter_perc,  t_te_working(i).mdvol_for_te_meter_yn,
-           t_te_working(i).mdvol_for_te_meter_perc, t_te_working(i).calc_discharge_yn, t_te_working(i).calc_discharge_vol);
+           t_te_working(i).no_account,            t_te_working(i).no_account_ref,                  t_te_working(i).period,                t_te_working(i).stage,
+           t_te_working(i).te_revised_name,       t_te_working(i).te_category,                     t_te_working(i).met_ref,               t_te_working(i).serial_no,
+           t_te_working(i).refdesc,               t_te_working(i).target_ref,                      t_te_working(i).unit,                  t_te_working(i).units,
+           t_te_working(i).start_date,            t_te_working(i).start_read,                      t_te_working(i).code,                  t_te_working(i).end_date,
+           t_te_working(i).end_read_calculated,   t_te_working(i).codea,                           t_te_working(i).te,                    t_te_working(i).te_vol,
+           t_te_working(i).ms,                    NVL(t_te_working(i).ms_vol,0),                   t_te_working(i).no_iwcs,               t_te_working(i).reason,
+           t_te_working(i).ouw_year,              t_te_working(i).te_year,                         t_te_working(i).fa_yn,                 NVL(t_te_working(i).fa_vol,0),
+           t_te_working(i).da_yn,                 NVL(t_te_working(i).da_vol,0),                   t_te_working(i).pa_yn,                 NVL(t_te_working(i).pa_perc,0),
+           t_te_working(i).mdvol_for_ws_meter_yn, t_te_working(i).mdvol_for_ws_meter_perc,         t_te_working(i).mdvol_for_te_meter_yn, t_te_working(i).mdvol_for_te_meter_perc,
+           t_te_working(i).calc_discharge_yn,     NVL(t_te_working(i).calc_discharge_vol,0),       NVL(t_te_working(i).ws_vol,0),         NVL(t_te_working(i).sub_meter,0),
+           t_te_working(i).te_vol_filtered,       l_te_vol_calc,                                   l_ouw_vol_calc);
       EXCEPTION
           WHEN OTHERS THEN 
              l_no_row_dropped := l_no_row_dropped + 1;
@@ -322,13 +409,22 @@ BEGIN
              l_no_row_err := l_no_row_err + 1;
       END;
 
+      IF l_rec_written AND NVL(t_te_working(i).end_read_calculated,0) != NVL(t_te_working(i).end_read_check,0) THEN
+         P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, 
+                                 L_JOB.NO_INSTANCE, 
+                                 'W', 
+                                 SUBSTR('end_read imbalance Warning',1,100),  
+                                 L_ERR.TXT_KEY, SUBSTR(L_ERR.TXT_DATA || ',' || L_PROGRESS,1,100));
+         l_no_row_war := l_no_row_war + 1;
+      END IF;
 
 
       -- keep count of records written
       IF l_rec_written THEN
          l_no_row_insert := l_no_row_insert + 1;
       ELSIF (l_no_row_exp > l_job.EXP_TOLERANCE
-             OR l_no_row_err > l_job.ERR_TOLERANCE) THEN
+             OR l_no_row_err > l_job.ERR_TOLERANCE
+             OR l_no_row_war > l_job.WAR_TOLERANCE) THEN
             -- tolearance limit has een exceeded, set error message and exit out
               CLOSE cur_te_working; 
               l_job.IND_STATUS := 'ERR';
@@ -381,4 +477,3 @@ END P_MOU_TRAN_TE_WORKING;
 show error;
 
 exit;
-

@@ -8,7 +8,7 @@ IS
 --
 -- FILENAME       : P_MIG_BATCH.pkb
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5214 $
 -- CREATED        : 23/02/2016
 --
 -- DESCRIPTION    : Package containing common procedures for batch migration
@@ -20,9 +20,18 @@ IS
 --
 -- Version     Date                Author         Description
 -- ---------   ---------------     -------        --------------------------------------
--- v 1.10      20/05/2016          S.Badhan       P_MOU_TE_TRAN_WORKING and P_MOU_TE_TRAN_SUMMARY removed from batch schedule as
+-- V 1.17      04/08/2016          D.Cheung       Performance issues due to bad stats.
+-- V 1.16      26/07/2016          S.Badhan       I-312 removed as cannot use in a transaction
+-- V 1.15      20/07/2016          S.Badhan       I-312 - Enable parallel processing for session.
+-- V 1.14      20/07/2016          D.Cheung       I-302 - Move METER_TE proc to BEFORE SPID_ASSOC
+-- V 1.13      19/07/2016          D.Cheung       Added GREATEST to NO_BATCH select to default first run to 100
+-- V 1.12      29/06/2016          S.Badhan       I-260. Add proc P_MOU_TRAN_SC_AS.
+-- V 1.11      27/05/2016          D.Cheung       Add TE Meter Procs - P_MOU_TRAN_METER_TE, P_MOU_TRAN_METER_DPIDXREF, P_MOU_TRAN_METER_READING_TE
+--                                                Re-Added P_MOU_TRAN_TE_WORKING and P_MOU_TRAN_TE_SUMMARY
+--                                                Add TE calc Discharge proc - P_MOU_TRAN_CALC_DISCHARGE
+-- v 1.10      20/05/2016          S.Badhan       P_MOU_TRAN_TE_WORKING and P_MOU_TRAN_TE_SUMMARY removed from batch schedule as
 --                                                this version to be used as baseline for system test and preprod.
--- v 1.09      13/05/2016          L.Smith        Added P_MOU_TE_TRAN_WORKING and P_MOU_TE_TRAN_SUMMARY to batch schedule
+-- v 1.09      13/05/2016          L.Smith        Added P_MOU_TRAN_TE_WORKING and P_MOU_TRAN_TE_SUMMARY to batch schedule
 -- V 1.08      11/05/2016          K.Burton       Added P_MOU_TRAN_BAD_DATA to end of batch
 -- V 1.07      28/04/2016          D.Cheung       Rename METER procedure to correct name
 -- V 1.06      26/04/2016          M.Marron       Added P_MOU_TRAN_METER_NETWORK and P_MOU_TRAN_METER_SPID_ASSOC to batch schedule.
@@ -93,13 +102,13 @@ IS
 BEGIN
 
    DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Started ');
-
+   
    l_key := c_module_name ;
    l_progress := 'Add new batch run';
    g_no_batch := 0;
    g_no_job := 0;
 
-   SELECT nvl(MAX(NO_BATCH),0) + 1
+   SELECT GREATEST(nvl(MAX(NO_BATCH),0) + 1,100)
    INTO   l_batch.NO_BATCH
    FROM   MIG_BATCHSTATUS;
 
@@ -127,6 +136,10 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
+  ELSE
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_TVP054');
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_TVP163');
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_MISS_AG_SC');
    END IF;
 
 
@@ -158,6 +171,8 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
+   ELSE
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_CLOCKOVER');
    END IF;
 
 -- 1d. Service Component  (pre tables)
@@ -173,6 +188,16 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
+  ELSE
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF');
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF_ALG');
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF_ALGITEM');
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF_SPLIT');
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF_REFTAB');
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF_EXTREF');
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SPR_TARIFF');
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SPR_TARIFF_ALGITEM');
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SPR_TARIFF_EXTREF');
    END IF;
 
 -- 1d. Service Component  (MPW)
@@ -188,6 +213,8 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
+  ELSE
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SC_MPW');
    END IF;
 
 -- 1d. Service Component  (UW)
@@ -203,21 +230,42 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
+  ELSE
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SC_UW');
    END IF;
 
--- 1e. TE Working
+-- 1e. Service Component  (AS)
 
-   g_proc_name := 'P_MOU_TRAN_TE_WORKING';
+   g_proc_name := 'P_MOU_TRAN_SC_AS';
    l_progress := 'Get job parameters ' || g_proc_name;
-   --FN_GETJOB_PARMS;
+   FN_GETJOB_PARMS;
    return_code := 0;
-   --l_progress := 'Calling MO Extract procedure - ' || g_proc_name ;
-   --P_MOU_TRAN_TE_WORKING(g_no_batch, g_no_job, return_code);
+   l_progress := 'Calling MO Extract procedure - ' || g_proc_name ;
+   P_MOU_TRAN_SC_AS(g_no_batch, g_no_job, return_code);
 
    IF return_code = -1 THEN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
+  ELSE
+     DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SC_AS');
+   END IF;
+   
+-- 1e. TE Working
+
+   g_proc_name := 'P_MOU_TRAN_TE_WORKING';
+   l_progress := 'Get job parameters ' || g_proc_name;
+   FN_GETJOB_PARMS;
+   return_code := 0;
+   l_progress := 'Calling MO Extract procedure - ' || g_proc_name ;   --V 1.11
+   P_MOU_TRAN_TE_WORKING(g_no_batch, g_no_job, return_code);          --V 1.11
+
+   IF return_code = -1 THEN
+      FN_UPDATEBATCH('ERR');
+      DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
+      RETURN;
+    ELSE
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_TE_WORKING');
    END IF;
 
 
@@ -225,15 +273,17 @@ BEGIN
 
    g_proc_name := 'P_MOU_TRAN_TE_SUMMARY';
    l_progress := 'Get job parameters ' || g_proc_name;
-   --FN_GETJOB_PARMS;
+   FN_GETJOB_PARMS;
    return_code := 0;
-   --l_progress := 'Calling MO Extract procedure - ' || g_proc_name ;
-   --P_MOU_TRAN_TE_SUMMARY(g_no_batch, g_no_job, return_code);
+   l_progress := 'Calling MO Extract procedure - ' || g_proc_name ;     --V 1.11
+   P_MOU_TRAN_TE_SUMMARY(g_no_batch, g_no_job, return_code);            --V 1.11
 
    IF return_code = -1 THEN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
+  ELSE
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_TE_SUMMARY');
    END IF;
 
 -- End of Initialisation Jobs
@@ -285,6 +335,8 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
+   ELSE
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'MO_SERVICE_COMPONENT');
    END IF;
 
 -- 4b. Discharge Point
@@ -302,6 +354,20 @@ BEGIN
       RETURN;
    END IF;
 
+-- 4c. Calculated Discharge
+
+   g_proc_name := 'P_MOU_TRAN_CALC_DISCHARGE';
+   l_progress := 'Get job parameters ' || g_proc_name;
+   FN_GETJOB_PARMS;
+   return_code := 0;
+   l_progress := 'Calling MO Extract procedure - ' || g_proc_name ;   --V 1.11
+   P_MOU_TRAN_CALC_DISCHARGE(g_no_batch, g_no_job, return_code);      --V 1.11
+
+   IF return_code = -1 THEN
+      FN_UPDATEBATCH('ERR');
+      DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
+      RETURN;
+   END IF;
 
 -- 5a. Meter (TARGET)
 
@@ -311,6 +377,23 @@ BEGIN
    return_code := 0;
    l_progress := 'Calling MO Extract procedure - ' || g_proc_name ;
    P_MOU_TRAN_METER_TARGET(g_no_batch, g_no_job, return_code);
+
+   IF return_code = -1 THEN
+      FN_UPDATEBATCH('ERR');
+      DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
+      RETURN;
+  ELSE
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_METER_READ_FREQ');
+   END IF;
+   
+-- 5d. Meter (TE)  -I-302
+
+   g_proc_name := 'P_MOU_TRAN_METER_TE';
+   l_progress := 'Get job parameters ' || g_proc_name;
+   FN_GETJOB_PARMS;
+   return_code := 0;
+   l_progress := 'Calling MO Extract procedure - ' || g_proc_name ;     --V 1.11
+   P_MOU_TRAN_METER_TE(g_no_batch, g_no_job, return_code);              --V 1.11
 
    IF return_code = -1 THEN
       FN_UPDATEBATCH('ERR');
@@ -346,8 +429,24 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
+  ELSE
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_METER_NETWORK');
    END IF;
-   
+
+-- 5e. Meter to Discharge Point Association (TE)
+
+   g_proc_name := 'P_MOU_TRAN_METER_DPIDXREF';
+   l_progress := 'Get job parameters ' || g_proc_name;
+   FN_GETJOB_PARMS;
+   return_code := 0;
+   l_progress := 'Calling MO Extract procedure - ' || g_proc_name ;     --V 1.11
+   P_MOU_TRAN_METER_DPIDXREF(g_no_batch, g_no_job, return_code);        --V 1.11
+
+   IF return_code = -1 THEN
+      FN_UPDATEBATCH('ERR');
+      DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
+      RETURN;
+   END IF;
    
 -- 6. Customer
 
@@ -364,7 +463,7 @@ BEGIN
       RETURN;
    END IF;
 
--- 7. Meter Reading (TARGET)
+-- 7a. Meter Reading (TARGET)
 
    g_proc_name := 'P_MOU_TRAN_METER_READING';
    l_progress := 'Get job parameters ' || g_proc_name;
@@ -372,6 +471,21 @@ BEGIN
    return_code := 0;
    l_progress := 'Calling MO Extract procedure - ' || g_proc_name ;
    P_MOU_TRAN_METER_READING(g_no_batch, g_no_job, return_code);
+
+   IF return_code = -1 THEN
+      FN_UPDATEBATCH('ERR');
+      DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
+      RETURN;
+   END IF;
+
+-- 7b. Meter Reading (TE)
+
+   g_proc_name := 'P_MOU_TRAN_METER_READING_TE';
+   l_progress := 'Get job parameters ' || g_proc_name;
+   FN_GETJOB_PARMS;
+   return_code := 0;
+   l_progress := 'Calling MO Extract procedure - ' || g_proc_name ;     --V 1.11
+   P_MOU_TRAN_METER_READING_TE(g_no_batch, g_no_job, return_code);      --V 1.11
 
    IF return_code = -1 THEN
       FN_UPDATEBATCH('ERR');
@@ -392,6 +506,8 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
+  ELSE
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_INSTALL_ADDRESS');
    END IF;
    
 -- 9. Bad data reporting
@@ -407,6 +523,8 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
+  ELSE
+      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_BAD_DATA');
    END IF;   
 
    -- successful run
@@ -769,7 +887,7 @@ END FN_RECONLOG;
 
 
 END P_MIG_BATCH;
-
---CREATE OR REPLACE PUBLIC SYNONYM P_MIG_BATCH FOR P_MIG_BATCH;
 /
+show errors;
 exit;
+

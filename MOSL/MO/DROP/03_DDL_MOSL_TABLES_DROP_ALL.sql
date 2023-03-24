@@ -7,7 +7,7 @@
 --
 -- CREATED        		: 	22/02/2016
 --	
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 4670 $
 --
 -- DESCRIPTION 		   	: 	Drops all tables
 --
@@ -23,16 +23,13 @@
 --
 ---------------------------- Modification History ----------------------------------------------------------
 --
--- Version     		Date          Author         		Description
--- ---------      	---------------     -------            	 ------------------------------------------------
--- V0.01       	15/02/2016    	N.Henderson     	Initial version after generation from Excel
--- 
--- V0.02	15/03/2016	N.Henderson		Commented out MO_RETAILER_REGISTRATION as the table was removed
---							in patch MO_P0009
---
---
--- V0.03	11/04/2016	N.Henderson		Added the removal of three new tables as part of TARIFF additions 
--- 
+-- Version  Date        Author       Description
+-- -------  ----------  -------      ------------------------------------------------
+-- V0.01    15/02/2016  N.Henderson  Initial version after generation from Excel
+-- V0.02	  15/03/2016	N.Henderson	 Commented out MO_RETAILER_REGISTRATION as the table was removed
+--							                     in patch MO_P0009
+-- V0.03	  11/04/2016	N.Henderson	 Added the removal of three new tables as part of TARIFF additions 
+-- V0.04    04/07/2016  S.Badhan     I-260. Add delete of P_MOU_TRAN_SC_AS.
 ------------------------------------------------------------------------------------------------------------
 
 --DROP TABLES
@@ -177,20 +174,29 @@ DROP PROCEDURE P_MIG_RECON;
 DROP PROCEDURE P_MOU_TRAN_ADDRESS;
 DROP PROCEDURE P_MOU_TRAN_CUSTOMER;
 DROP PROCEDURE P_MOU_TRAN_DISCHARGE_POINT;
+DROP PROCEDURE P_MOU_TRAN_CALC_DISCHARGE;
 DROP PROCEDURE P_MOU_TRAN_KEY_GEN;
 DROP PROCEDURE P_MOU_TRAN_METER_TARGET;
+DROP PROCEDURE P_MOU_TRAN_METER_TE;
+DROP PROCEDURE P_MOU_TRAN_ROLLOVER;
 DROP PROCEDURE P_MOU_TRAN_METER_NETWORK;
 DROP PROCEDURE P_MOU_TRAN_METER_SPID_ASSOC;
+DROP PROCEDURE P_MOU_TRAN_METER_READING;
+DROP PROCEDURE P_MOU_TRAN_METER_READING_TE;
+DROP PROCEDURE P_MOU_TRAN_METER_DPIDXREF;
 DROP PROCEDURE P_MOU_TRAN_PROPERTY;
 DROP PROCEDURE P_MOU_TRAN_SC_MPW;
 DROP PROCEDURE P_MOU_TRAN_SC_PRE;
 DROP PROCEDURE P_MOU_TRAN_SC_UW;
+DROP PROCEDURE P_MOU_TRAN_SC_AS;
 DROP PROCEDURE P_MOU_TRAN_SERVICE_COMPONENT;
 DROP PROCEDURE P_MOU_TRAN_SUPPLY_POINT;
 DROP PROCEDURE P_MOU_TRAN_TE_SUMMARY;
 DROP PROCEDURE P_MOU_TRAN_TE_WORKING;
 DROP PROCEDURE P_REMOVE_ADDRESS_PK_CONST;
-DROP PROCEDURE P_TRUNCATE_MO_TABLES;
+DROP PROCEDURE P_ENABLE_DISABLE_FK;
+DROP PROCEDURE P_MOU_TRAN_BAD_DATA;
+DROP PROCEDURE JC_DISABLE_ALL_CONSTRAINT;
 commit;
 
 --DROP FUNCTIONS

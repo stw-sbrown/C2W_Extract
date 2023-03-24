@@ -9,7 +9,7 @@ PROCEDURE P_MOU_DEL_METER_SUPPLY_POINT (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYP
 --
 -- FILENAME       : P_MOU_DEL_METER_SUPPLY_POINT.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5333 $
 --
 -- CREATED        : 12/04/2016
 --
@@ -31,6 +31,9 @@ PROCEDURE P_MOU_DEL_METER_SUPPLY_POINT (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYP
 --                                    files
 -- V 1.02      18/05/2016  K.Burton   Changes to MANUFACTURER_PK to remove spaces from names as per
 --                                    MOSL upload file feedback
+-- V 1.03      13/07/2016  D.Cheung   I-291 - Add DISTINCT to main cursor to filter meters on multiple logical properties
+-- V 1.03      25/08/2016  S.Badhan   I-320. If user FINDEL use directory FINEXPORT.
+-- V 1.04      01/09/2016  K.Burton   Updates for splitting STW data into 3 batches
 -----------------------------------------------------------------------------------------
 
   c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_DEL_METER_SUPPLY_POINT';
@@ -69,7 +72,7 @@ PROCEDURE P_MOU_DEL_METER_SUPPLY_POINT (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYP
            MANUFACTURER_PK,
            SPID_PK
     FROM (
-    SELECT MS.MANUFACTURERSERIALNUM_PK,
+    SELECT DISTINCT MS.MANUFACTURERSERIALNUM_PK,
            MS.MANUFACTURER_PK MANUFACTURER,
            UPPER(REPLACE(MS.MANUFACTURER_PK,' ','')) MANUFACTURER_PK, -- V 1.02
            MS.SPID SPID_PK
@@ -95,6 +98,10 @@ BEGIN
    L_NO_ROW_EXP := 0;
    l_job.IND_STATUS := 'RUN';
 
+   IF USER = 'FINDEL' THEN
+      l_filepath := 'FINEXPORT';
+   END IF;
+   
    -- get job no and start job
    P_MIG_BATCH.FN_STARTJOB(no_batch, no_job, c_module_name,
                          l_job.NO_INSTANCE,
@@ -210,60 +217,36 @@ BEGIN
     CASE w.WHOLESALER_ID 
       WHEN 'ANGLIAN-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_ANW_V';
-        l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SUPPLY_POINT_ANW_V;
-        END IF;
       WHEN 'DWRCYMRU-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_WEL_V';
-        l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SUPPLY_POINT_WEL_V;
-        END IF;
       WHEN 'SEVERN-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_STW_V';
-        l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SUPPLY_POINT_STW_V;
-        END IF;
+      WHEN 'SEVERN-A' THEN
+        l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_STWA_V';
+      WHEN 'SEVERN-B' THEN
+        l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_STWB_V';
       WHEN 'THAMES-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_THW_V';
-        l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SUPPLY_POINT_THW_V;
-        END IF;
       WHEN 'WESSEX-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_WEW_V';
-        l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SUPPLY_POINT_WEW_V;
-        END IF;
       WHEN 'YORKSHIRE-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_YOW_V';
-        l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SUPPLY_POINT_YOW_V;
-        END IF;
       WHEN 'UNITED-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_UUW_V';
-        l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SUPPLY_POINT_UUW_V;
-        END IF;
       WHEN 'SOUTHSTAFF-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_SSW_V';
-        l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SUPPLY_POINT_SSW_V;
-        END IF;
     END CASE;
     IF w.RUN_FLAG = 1 THEN
+      l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
       P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
       l_no_row_written := l_no_row_written + l_rows_written; -- add rows written to total
     ELSE
+      l_sql := 'SELECT COUNT(*) FROM DEL_METER_SUPPLY_POINT MSP, DEL_SUPPLY_POINT SP WHERE MSP.SPID_PK = SP.SPID_PK AND SP.WHOLESALERID = :wholesaler';
+      EXECUTE IMMEDIATE l_sql INTO l_count USING w.WHOLESALER_ID;
       l_no_row_dropped_cb := l_no_row_dropped_cb + l_count;
-    END IF;  END LOOP;
-  
+    END IF;
+  END LOOP;
+
     IF t_meter_sp.COUNT < l_job.NO_COMMIT THEN
        EXIT;
     ELSE
@@ -273,7 +256,6 @@ BEGIN
   END LOOP;
 
   CLOSE cur_meter_sp;
---  UTL_FILE.FCLOSE(fHandle);
 
   -- archive the latest batch
   P_DEL_UTIL_ARCHIVE_TABLE(p_tablename => l_tablename,

@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_METER_READING.sql
 --
--- Subversion $Revision: 5194 $
+-- Subversion $Revision: 5458 $
 --
 -- CREATED        : 07/04/2016
 --
@@ -23,6 +23,7 @@ IS
 --
 -- Version     Date                Author         CR/DEF    Description
 -- ---------   ---------------     -------        ----      ----------------------------------
+-- V 9.09      12/09/2016          D.Cheung                 I-355 - Interim workaround for future dates issue - set to current date
 -- V 9.08      02/08/2016          D.Cheung                 I-325 - MOSL rejections - initial meter read date before spid effective date
 -- V 9.07      26/07/2016          D.Cheung                 I-317 - MOSL rejections - include non-market meters
 -- V 9.06      18/07/2016          D.Cheung                 I.306 - Fix BUG causing NULL meter Reads
@@ -281,6 +282,13 @@ BEGIN
                   P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'W', SUBSTR('Warning - Initial Meter Read Date changed to SPID Effective Date',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
                   L_NO_ROW_WAR := L_NO_ROW_WAR + 1;
                   L_REC_WAR := TRUE;
+--v9.09 - interim workaround for future dates
+              ELSIF (t_met(i).TS_CAPTURED > SYSDATE) THEN
+                  t_met(i).TS_CAPTURED := SYSDATE;
+                  P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'W', SUBSTR('Warning - FUTURE Initial Meter Read Date changed to Current Date',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
+                  L_NO_ROW_WAR := L_NO_ROW_WAR + 1;
+                  L_REC_WAR := TRUE;
+--v9.09                  
               END IF;
               l_initialmeterreaddate := t_met(i).TS_CAPTURED;   --v9.03
           ELSE
@@ -289,6 +297,13 @@ BEGIN
                   P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'W', SUBSTR('Warning - Meter Read Date changed to SPID Effective Date',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
                   L_NO_ROW_WAR := L_NO_ROW_WAR + 1;
                   L_REC_WAR := TRUE;
+--v9.09 - interim workaround for future dates
+              ELSIF (t_met(i).TS_CAPTURED > SYSDATE) THEN
+                  t_met(i).TS_CAPTURED := SYSDATE;
+                  P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'W', SUBSTR('Warning - FUTURE Meter Read Date changed to Current Date',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
+                  L_NO_ROW_WAR := L_NO_ROW_WAR + 1;
+                  L_REC_WAR := TRUE;
+--v9.09                  
               END IF;
               
               --v9.05 - Check for duplicate METERREADDATES (DATE PART)

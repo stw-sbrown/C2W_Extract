@@ -9,7 +9,7 @@ PROCEDURE P_MOU_DEL_CALCULATED_DISCHARGE  (no_batch IN MIG_BATCHSTATUS.NO_BATCH%
 --
 -- FILENAME       : P_MOU_DEL_CALCULATED_DISCHARGE.sql
 --
--- Subversion $Revision: 5333 $
+-- Subversion $Revision: 5458 $
 --
 -- CREATED        : 12/04/2016
 --
@@ -199,6 +199,11 @@ BEGIN
       l_filename := 'CALCULATED_DISCHARGE_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
       P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
       l_no_row_written := l_no_row_written + l_rows_written; -- add rows written to total
+
+      IF w.WHOLESALER_ID NOT LIKE 'SEVERN%' THEN
+        l_filename := 'OWC_CALCULATED_DISCHARGE_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
+        P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
+      END IF;
     ELSE
       l_sql := 'SELECT COUNT(*) FROM DEL_CALCULATED_DISCHARGE CD, DEL_DISCHARGE_POINT DP, DEL_SUPPLY_POINT SP WHERE CD.DPID_PK = DP.DPID_PK AND DP.SPID_PK = SP.SPID_PK AND SP.WHOLESALERID = :wholesaler';
       EXECUTE IMMEDIATE l_sql INTO l_count USING w.WHOLESALER_ID;

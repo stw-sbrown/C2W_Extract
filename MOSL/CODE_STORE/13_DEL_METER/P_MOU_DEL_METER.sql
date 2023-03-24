@@ -9,7 +9,7 @@ PROCEDURE P_MOU_DEL_METER(no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
 --
 -- FILENAME       : P_MOU_DEL_METER.sql
 --
--- Subversion $Revision: 5333 $
+-- Subversion $Revision: 5458 $
 --
 -- CREATED        : 08/04/2016
 --
@@ -65,6 +65,7 @@ PROCEDURE P_MOU_DEL_METER(no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
   l_tablename VARCHAR2(100) := 'DEL_METER';
 
   l_sql VARCHAR2(2000);
+  l_sql_owc VARCHAR2(2000);
 --  fHandle UTL_FILE.FILE_TYPE;
   
   -- Cross Border Control cursor
@@ -303,6 +304,19 @@ BEGIN
       l_filename := 'METER_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
       P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
       l_no_row_written := l_no_row_written + l_rows_written; -- add rows written to total
+
+      IF w.WHOLESALER_ID NOT LIKE 'SEVERN%' THEN
+        l_filename := 'OWC_METER_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
+        l_sql_owc := 'SELECT M.*
+                      FROM DEL_METER DM,
+                        DEL_METER_STW_V M,
+                        DEL_SUPPLY_POINT STW
+                      WHERE STW.OTHERWHOLESALERID  = ''' || w.WHOLESALER_ID || '''
+                      AND DM.SPID = STW.SPID_PK
+                      AND DM.MANUFACTURER_PK = M.MANUFACTURER_PK
+                      AND DM.MANUFACTURERSERIALNUM_PK = M.MANUFACTURERSERIALNUM_PK';
+        P_DEL_UTIL_WRITE_FILE(l_sql_owc,l_filepath,l_filename,l_rows_written);      
+      END IF;
     ELSE
       l_sql := 'SELECT COUNT(*) FROM DEL_METER M, DEL_SUPPLY_POINT SP WHERE M.SPID = SP.SPID_PK AND SP.WHOLESALERID = :wholesaler';
       EXECUTE IMMEDIATE l_sql INTO l_count USING w.WHOLESALER_ID;

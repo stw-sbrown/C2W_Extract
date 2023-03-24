@@ -9,7 +9,7 @@ PROCEDURE P_MOU_DEL_SERVICE_COMPONENT (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE
 --
 -- FILENAME       : P_MOU_DEL_SERVICE_COMPONENT.sql
 --
--- Subversion $Revision: 5333 $
+-- Subversion $Revision: 5458 $
 --
 -- CREATED        : 11/04/2016
 --
@@ -200,7 +200,7 @@ PROCEDURE P_MOU_DEL_SERVICE_COMPONENT (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE
     AND SP.SPID_PK = SCA.SPID_PK(+)
     AND SP.SPID_PK = SW.SPID_PK(+)
     AND SP.SPID_PK = HD.SPID_PK(+)
-    AND EXISTS (SELECT 1 FROM MOUTRAN.MO_SERVICE_COMPONENT WHERE SPID_PK = SP.SPID_PK)
+--    AND EXISTS (SELECT 1 FROM MOUTRAN.MO_SERVICE_COMPONENT WHERE SPID_PK = SP.SPID_PK)
     ORDER BY SP.SPID_PK;
 
   TYPE tab_service_component IS TABLE OF cur_service_component%ROWTYPE INDEX BY PLS_INTEGER;
@@ -375,6 +375,15 @@ BEGIN
       l_filename := 'SERVICE_COMPONENT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
       P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
       l_no_row_written := l_no_row_written + l_rows_written; -- add rows written to total
+      
+      IF w.WHOLESALER_ID NOT LIKE 'SEVERN%' THEN
+        l_filename := 'OWC_SERVICE_COMPONENT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
+        l_sql := 'SELECT  SC.*
+                  FROM DEL_SUPPLY_POINT STW, DEL_SERVICE_COMPONENT_STW_V SC 
+                  WHERE STW.OTHERWHOLESALERID = ''' || w.WHOLESALER_ID || ''' 
+                  AND STW.SPID_PK = SC.SPID_PK';
+        P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);      
+      END IF;
     ELSE
       l_sql := 'SELECT COUNT(*) FROM DEL_SERVICE_COMPONENT SC, DEL_SUPPLY_POINT SP WHERE SC.SPID_PK = SP.SPID_PK AND SP.WHOLESALERID = :wholesaler';
       EXECUTE IMMEDIATE l_sql INTO l_count USING w.WHOLESALER_ID;

@@ -5,7 +5,7 @@
 --                        Add fields to MO_CALCULATED_DISCHARGE for TE
 --
 --
--- Subversion $Revision: 4872 $	
+-- Subversion $Revision: 5458 $	
 --							
 --
 -- ASSOCIATED FILES		:	
@@ -16,6 +16,7 @@
 --
 -- Version   Date        Author    Description
 -- --------  ----------  --------  --------------------------------------------------------------
+-- V0.04     13/09/2016  D.Cheung  I-357 - Add constraint on MO_METER_DPIDXREF manufactuer, serialnum, dpid unique
 -- V0.03     27/05/2016  D.Cheung  Increase length of DPID_PK on MO_CALCULATED_DISCHARGE for TE
 -- V0.02     26/05/2016  D.Cheung  Add fields to MO_CALCULATED_DISCHARGE for TE
 --                                 Increase length of CALCDISCHARGEID_PK on MO_CALCULATED_DISCHARGE for TE
@@ -31,6 +32,7 @@ ALTER TABLE MO_METER_READING  MODIFY METERREF  NUMBER(15);
 ALTER TABLE MO_METER_SPID_ASSOC  MODIFY METERREF  NUMBER(15);
 
 ALTER TABLE MO_METER_DPIDXREF MODIFY DPID_PK VARCHAR2(32);
+ALTER TABLE MO_METER_DPIDXREF ADD CONSTRAINT PK_02_MAN_SERIAL_DPID UNIQUE (MANUFACTURER_PK,MANUFACTURERSERIALNUM_PK,DPID_PK);
 
 ALTER TABLE MO_CALCULATED_DISCHARGE ADD STWPROPERTYNUMBER_PK	NUMBER(9) CONSTRAINT CH01_STWPROPERTYNUMBER_PK NOT NULL;
 ALTER TABLE MO_CALCULATED_DISCHARGE ADD STWACCOUNTNUMBER	NUMBER(10) CONSTRAINT CH01_STWACCOUNTNUMBER NOT NULL;

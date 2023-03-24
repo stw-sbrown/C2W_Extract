@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_METER_DPIDXREF.sql
 --
--- Subversion $Revision: 5363 $
+-- Subversion $Revision: 5458 $
 --
 -- CREATED        : 25/05/2016
 --
@@ -23,11 +23,13 @@ IS
 --
 -- Version     Date        Author     CR/DEF    Description
 -- ---------   ----------  -------    ------    ---------------------------------------------
+-- V 0.00      24/05/2016  D.Cheung             Initial Draft
 -- V 0.01      19/08/2016  D.Cheung   CR_035    Add Associations for Potable Water Meters
--- V 0.01      24/05/2016  D.Cheung             Initial Draft
 -- V 0.02      30/08/2016  K.Burton    198      SAP Defect 198 - effective date for MDVOL value is
 --                                              not passed to SAP. Uncommented previously commented fields to insert
 --                                              effective dates from MO_DISCHARGE_POINT
+-- V 0.03      05/09/2016  D.Cheung             I-352 - Amend Join on second cursor part to join via meter_spid_assoc (logical property)
+-- V 0.04      08/09/2016  D.Cheung             Change MDVOL calculation to use TE field
 -----------------------------------------------------------------------------------------
 
   c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_METER_DPIDXREF';
@@ -73,8 +75,8 @@ CURSOR cur_met (p_no_equipment_start   MO_METER.METERREF%TYPE,
               , TRIM(MM.MANUFACTURERSERIALNUM_PK) AS NO_UTL_EQUIP
               , TRIM(MD.DPID_PK) AS DPID_PK
               , TRIM(MD.SPID_PK) AS SPID_PK
-              --, BTW.MS_VOL AS MDVOL
-              , NVL(BTW.MDVOL_FOR_TE_METER_PERC,0)*100 AS MDVOL
+--              , NVL(BTW.MDVOL_FOR_TE_METER_PERC,0)*100 AS MDVOL   --v0.04
+              , NVL(ABS(BTW.TE),0)*100 AS MDVOL     --v0.04
               , TRIM(MD.STWPROPERTYNUMBER_PK) AS NO_PROPERTY
               , TRIM(MM.MANUFCODE) AS MANUFCODE
               , MD.DPEFFECTFROMDATE AS DPEFFECTFROMDATE -- V 0.02 
@@ -119,7 +121,8 @@ CURSOR cur_met (p_no_equipment_start   MO_METER.METERREF%TYPE,
                       , MD.EFFECTTODATE AS EFFECTIVETODATE
                       , ROW_NUMBER() OVER (PARTITION BY MM.METERREF ORDER BY TRIM(MD.DPID_PK)) AS Row_Nr
                 FROM MO_METER MM
-                JOIN MO_SUPPLY_POINT MSP ON SUBSTR(MM.SPID_PK,1,10) = MSP.CORESPID_PK
+                JOIN MO_METER_SPID_ASSOC MSA ON MSA.METERREF = MM.METERREF              --v0.03
+                JOIN MO_SUPPLY_POINT MSP ON SUBSTR(MSA.SPID,1,10) = MSP.CORESPID_PK     --v0.03
                 JOIN MO_DISCHARGE_POINT MD ON MD.SPID_PK = MSP.SPID_PK
                 WHERE MM.METERREF BETWEEN p_no_equipment_start AND p_no_equipment_end
 --                WHERE MM.METERREF BETWEEN 1 AND 999999999

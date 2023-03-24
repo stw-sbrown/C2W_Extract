@@ -6,7 +6,7 @@
 -- FILENAME       		: 	DEL_P0005.sql
 --
 --
--- Subversion $Revision: 5194 $	
+-- Subversion $Revision: 5458 $	
 --
 -- CREATED        		: 	27/04/2016
 --	
@@ -33,6 +33,7 @@
 --                                                meters to be dropped from DEL tables
 -- V0.04          15/08/2016      S.Badhan        I-320. Remove schema name from trigger.
 -- V0.06          16/08/2016      S.Badhan        I-320. DEL_METER_SUPPLY_POINT_TRG amemded to compile.
+-- V0.07          13/09/2016      D.Cheung        I-356 - Remove 'MS' constraint from PRIVATEWATER check
 ------------------------------------------------------------------------------------------------------------
 
 create or replace
@@ -56,9 +57,9 @@ BEGIN
     AND MANUFACTURERSERIALNUM_PK = :NEW.MANUFACTURERSERIALNUM_PK;
   EXCEPTION
     WHEN no_data_found THEN
-      RAISE_APPLICATION_ERROR( -20001, 'METERTREATMENT not found for MANUFACTURER_PK and MANUFACTURERSERIALNUM_PK'); 
+      RAISE_APPLICATION_ERROR( -20001, 'METERTREATMENT not found for MANUFACTURER_PK and MANUFACTURERSERIALNUM_PK');
   END;
-  
+
   BEGIN
     SELECT SERVICECATEGORY
     INTO l_service_category
@@ -66,9 +67,9 @@ BEGIN
     WHERE SPID_PK = :NEW.SPID_PK;
   EXCEPTION
     WHEN no_data_found THEN
-      RAISE_APPLICATION_ERROR( -20001, 'SERVICECATEGORY not found for SPID'); 
+      RAISE_APPLICATION_ERROR( -20001, 'SERVICECATEGORY not found for SPID');
   END;
-  
+
   IF l_meter_treatment = 'POTABLE' THEN
     IF l_service_category = 'W' THEN
       SELECT COUNT(SERVICECOMPONENTTYPE)
@@ -76,12 +77,12 @@ BEGIN
       FROM MOUTRAN.MO_SERVICE_COMPONENT
       WHERE SPID_PK = :NEW.SPID_PK
       AND SERVICECOMPONENTTYPE = 'MPW';
-      
+
       IF l_count = 0 THEN
-        RAISE_APPLICATION_ERROR( -20001, 'SERVICECOMPONENTTYPE is incompatible with METERTREATMENT for SPID');
+        RAISE_APPLICATION_ERROR( -20001, 'SERVICECOMPONENTTYPE is incompatible with METERTREATMENT ' || l_meter_treatment || ' for SPID ');
       END IF;
     ELSE
-      RAISE_APPLICATION_ERROR( -20001, 'SERVICECATEGORY is incompatible with METERTREATMENT');
+      RAISE_APPLICATION_ERROR( -20001, 'SERVICECATEGORY is incompatible with METERTREATMENT ' || l_meter_treatment);
     END IF;
   ELSIF l_meter_treatment = 'NONPOTABLE' THEN
     IF l_service_category = 'W' THEN
@@ -92,24 +93,25 @@ BEGIN
       AND SERVICECOMPONENTTYPE = 'MNPW';
 
       IF l_count = 0 THEN
-        RAISE_APPLICATION_ERROR( -20001, 'SERVICECOMPONENTTYPE is incompatible with METERTREATMENT for SPID');
+        RAISE_APPLICATION_ERROR( -20001, 'SERVICECOMPONENTTYPE is incompatible with METERTREATMENT ' || l_meter_treatment || ' for SPID ');
       END IF;
     ELSE
-      RAISE_APPLICATION_ERROR( -20001, 'SERVICECATEGORY is incompatible with METERTREATMENT');
-    END IF;  
+      RAISE_APPLICATION_ERROR( -20001, 'SERVICECATEGORY is incompatible with METERTREATMENT ' || l_meter_treatment);
+    END IF;
   ELSIF l_meter_treatment IN ('PRIVATEWATER','SEWERAGE') THEN
     IF l_service_category = 'S' THEN
       SELECT COUNT(SERVICECOMPONENTTYPE)
       INTO l_count
       FROM MOUTRAN.MO_SERVICE_COMPONENT
       WHERE SPID_PK = :NEW.SPID_PK
-      AND SERVICECOMPONENTTYPE = 'MS';
+          AND SERVICECOMPONENTTYPE IN ('AS','US','SW','MS')
+      ;
 
       IF l_count = 0 THEN
-        RAISE_APPLICATION_ERROR( -20001, 'SERVICECOMPONENTTYPE is incompatible with METERTREATMENT for SPID');
-      END IF;    
+        RAISE_APPLICATION_ERROR( -20001, 'SERVICECOMPONENTTYPE is incompatible with METERTREATMENT ' || l_meter_treatment || ' for SPID ');
+      END IF;
     ELSE
-      RAISE_APPLICATION_ERROR( -20001, 'SERVICECATEGORY is incompatible with METERTREATMENT');
+      RAISE_APPLICATION_ERROR( -20001, 'SERVICECATEGORY is incompatible with METERTREATMENT ' || l_meter_treatment);
     END IF;
   ELSIF l_meter_treatment = 'PRIVATETE' THEN
     IF l_service_category = 'S' THEN
@@ -120,40 +122,13 @@ BEGIN
       AND SERVICECOMPTYPE = 'TE';
 
       IF l_count = 0 THEN
-        RAISE_APPLICATION_ERROR( -20001, 'SERVICECOMPONENTTYPE is incompatible with METERTREATMENT for SPID');
-      END IF;    
+        RAISE_APPLICATION_ERROR( -20001, 'SERVICECOMPONENTTYPE is incompatible with METERTREATMENT ' || l_meter_treatment || ' for SPID ');
+      END IF;
     ELSE
-      RAISE_APPLICATION_ERROR( -20001, 'SERVICECATEGORY is incompatible with METERTREATMENT');
+      RAISE_APPLICATION_ERROR( -20001, 'SERVICECATEGORY is incompatible with METERTREATMENT ' || l_meter_treatment);
     END IF;  ELSE
     RAISE_APPLICATION_ERROR( -20001, 'Invalid METERTREATMENT');
   END IF;
-
---    --INITIALISE VARIABLES;
---    l_spidcount := 0;
---
---    --RULE: Service category and service components must be appropriate for the Supply Point
---    BEGIN
---        SELECT COUNT(*)
---        INTO   l_spidcount
---        FROM   DEL_METER DM,
---        DEL_SUPPLY_POINT DS
---        WHERE  :NEW.MANUFACTURER_PK = DM.MANUFACTURER_PK
---            AND :NEW.MANUFACTURERSERIALNUM_PK= DM.MANUFACTURERSERIALNUM_PK
---            AND :NEW.SPID_PK = DS.SPID_PK
---            AND (
---                (DM.METERTREATMENT = 'POTABLE' AND DS.SERVICECATEGORY = 'W')
---                OR
---                (DM.METERTREATMENT = 'SEWERAGE' AND DS.SERVICECATEGORY = 'S')
---            );
---    EXCEPTION
---        WHEN NO_DATA_FOUND THEN
---            l_spidcount := 0;
---    END;
---
---    IF (l_spidcount = 0) THEN
---        RAISE_APPLICATION_ERROR( -20001, 'SPID association not valid for Service Category and MeterTreatment');
---    END IF;
-
 END DEL_METER_SUPPLY_POINT_TRG;
 /
 ALTER TRIGGER DEL_METER_SUPPLY_POINT_TRG ENABLE;

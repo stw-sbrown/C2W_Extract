@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_METER_NETWORK.sql
 --
--- Subversion $Revision: 5194 $
+-- Subversion $Revision: 5458 $
 --
 -- CREATED        : 21/04/2016
 --
@@ -24,6 +24,7 @@ IS
 --
 -- Version     Date        Author     CP/DEF    Description
 -- ---------   ----------  -------    ------    ---------------------------------------------
+-- V 4.08      05/09/2016  D.Cheung             I-351 - Not evaluating SPIDs for NONMARKET meters correctly
 -- V 4.07      03/08/2016  D.Cheung             I-328 - Duplicate main - sub mappings caused by multiple sub-spids in cursor
 -- V 4.06      21/07/2016  D.Cheung             I-299 - Changes to AGG_NET in preparation for TARGET changes
 -- V 4.05      13/07/2016  D.Cheung             I-293 - Need checks for Invalid NULL SPIDS on marketable non-master MAIN and SUB meters
@@ -79,16 +80,16 @@ CURSOR cur_met (p_no_equipment_start   BT_TVP163.NO_EQUIPMENT%TYPE,
                 ,BT_MN.MAIN_STWPROPERTYNUMBER   MAIN_STWPROPERTYNUMBER_PK
                 ,MM_M.MANUFACTURER_PK           MAIN_MANUFACTURER_PK             
                 ,MM_M.MANUFACTURERSERIALNUM_PK  MAIN_MANSERIALNUM_PK    
-                --,MM_M.SPID_PK                   MAIN_SPID_PK 
-                ,TRIM(LSRM.SPID_PK)             MAIN_SPID_PK
+                , CASE WHEN TRIM(BT_MN.FG_NMM) = 'Y' THEN NULL ELSE TRIM(LSRM.SPID_PK) END AS MAIN_SPID_PK   --v4.08
+--                ,TRIM(LSRM.SPID_PK)             MAIN_SPID_PK
                 ,MM_M.MANUFCODE                 MAIN_MANUFCODE
                 ,MM_M.METERTREATMENT            MAIN_METERTREATMENT
                 ,BT_MN.SUB_STWMETERREF          SUB_METERREF
                 ,BT_MN.SUB_STWPROPERTYNUMBER    SUB_STWPROPERTYNUMBER_PK
                 ,MM_S.MANUFACTURER_PK           SUB_MANUFACTURER_PK 
                 ,MM_S.MANUFACTURERSERIALNUM_PK  SUB_MANSERIALNUM_PK
---                ,MM_S.SPID_PK                   SUB_SPID_PK
-                ,TRIM(LSRS.SPID_PK)             SUB_SPID_PK
+                , CASE WHEN MM_S.NONMARKETMETERFLAG = 1 THEN NULL ELSE TRIM(LSRS.SPID_PK) END AS SUB_SPID_PK   --v4.08
+--                ,TRIM(LSRS.SPID_PK)             SUB_SPID_PK
                 ,MM_S.MANUFCODE                 SUB_MANUFCODE
                 ,MM_S.METERTREATMENT            SUB_METERTREATMENT
                 ,BT_MN.FG_NMM                   MAIN_NMM

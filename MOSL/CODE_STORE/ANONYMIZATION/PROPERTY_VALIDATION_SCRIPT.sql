@@ -2,7 +2,7 @@
 ------------------------------------------------------------------------------------------------------------
 -- DESCRIPTION: 	      Script to get all MO data from MOUTRAN tables related to a single NO_PROPERTY
 --                      Used for validating transform data for a single property number
--- $Revision: 4099 $
+-- $Revision: 5458 $
 --
 -- EXAMPLE NO_PROPERTY: 831174712 831111846
 --
@@ -22,6 +22,7 @@
 --
 -- Version     		Date            Author         	Description
 -- ---------      ----------      -------         ----------------------------------------------------------
+-- V0.03          06/09/2016      D.Cheung        Add MO_METER_DPIDXREF
 -- V0.02          23/05/2016      D.Cheung        Add Header to identify datasets, hide substitution comments   
 -- V0.01		      20/05/2016      D.Cheung	      Initial Draft
 --
@@ -73,10 +74,13 @@ SELECT * FROM MO_DISCHARGE_POINT WHERE STWPROPERTYNUMBER_PK = &v_no_property;
 
 PROMPT *** METER_TARGET ***;
 --SELECT ' ' METER, METERREF, MANUFCODE, MANUFACTURER_PK, MANUFACTURERSERIALNUM_PK, SPID_PK, METERLOCFREEDESCRIPTOR FROM MO_METER WHERE INSTALLEDPROPERTYNUMBER = &v_no_property;
-SELECT * FROM MO_METER WHERE INSTALLEDPROPERTYNUMBER = &v_no_property;
+SELECT * FROM MO_METER WHERE NVL(MASTER_PROPERTY,INSTALLEDPROPERTYNUMBER) = &v_no_property;
 
 PROMPT *** METER_SPID_ASSOC ***; 
 SELECT * FROM MO_METER_SPID_ASSOC WHERE STWPROPERTYNUMBER_PK = &v_no_property;
+
+PROMPT *** METER_DPIDXREF ***; 
+SELECT * FROM MO_METER_DPIDXREF WHERE INSTALLEDPROPERTYNUMBER = &v_no_property ORDER BY METERDPIDXREF_PK;
 
 prompt *** METER_NETWORK ***;
 /*

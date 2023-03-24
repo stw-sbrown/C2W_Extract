@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_FIN_TRAN_METER_NETWORK.sql
 --
--- Subversion $Revision: 5372 $
+-- Subversion $Revision: 5399 $
 --
 -- CREATED        : 02/08/2016
 --
@@ -60,28 +60,28 @@ IS
                    P_METERREF_END     MO_METER_READING.METERREF%type)
     IS
     SELECT DISTINCT
-           net.MAINNONMARKETFLAG,
-           net.MAINMANUFACTURERSERIALNUM,
-           net.MAINMANUFACTURER,
-           NULL MAIN_MANUFCODE,
-           net.MAINSAPEQUIPMENT,
-           net.SPID_PK,
-           sup.STWPROPERTYNUMBER AS MAIN_STWPROPERTYNUMBER_PK,
-           net.SUBMANUFACTURERSERIALNUM,
-           net.SUBMANUFACTURER,
-           NULL SUB_MANUFCODE,
-           net.SUBSAPEQUIPMENT,
-           msp.SPID_PK AS SUB_SPID,
-           sups.STWPROPERTYNUMBER AS SUB_STWPROPERTYNUMBER_PK
-    from   RECEPTION.SAP_METER_NETWORK  NET
-    left JOIN RECEPTION.SAP_SUPPLY_POINT sup
-           on SUP.SPID_PK = NET.SPID_PK
-    left JOIN RECEPTION.SAP_METER_SUPPLY_POINT msp
-          on MSP.SAPEQUIPMENT = NET.SUBSAPEQUIPMENT
-    left JOIN RECEPTION.SAP_SUPPLY_POINT sups
-          on SUPS.SPID_PK = MSP.SPID_PK
-    ORDER BY MAINSAPEQUIPMENT;
-
+             net.MAINNONMARKETFLAG,
+             net.MAINMANUFACTURERSERIALNUM,
+             net.MAINMANUFACTURER,
+             NULL MAIN_MANUFCODE,
+             mtm.METERREF AS MAIN_METERREF,
+             mtm.SPID_PK,
+             mtm.INSTALLEDPROPERTYNUMBER AS MAIN_STWPROPERTYNUMBER_PK,
+             net.SUBMANUFACTURERSERIALNUM,
+             net.SUBMANUFACTURER,
+             NULL SUB_MANUFCODE,
+             mts.METERREF AS SUB_METERREF,
+             mts.SPID_PK AS SUB_SPID,
+             mts.INSTALLEDPROPERTYNUMBER AS SUB_STWPROPERTYNUMBER_PK
+      FROM   RECEPTION.SAP_METER_NETWORK  NET
+      LEFT JOIN FINTRAN.MO_METER mtm
+             ON net.MAINMANUFACTURERSERIALNUM = mtm.MANUFACTURERSERIALNUM_PK
+                AND net.MAINMANUFACTURER = mtm.MANUFACTURER_PK
+      LEFT JOIN FINTRAN.MO_METER mts
+             ON net.SUBMANUFACTURERSERIALNUM = mts.MANUFACTURERSERIALNUM_PK
+                AND net.SUBMANUFACTURER = mts.MANUFACTURER_PK
+      ORDER BY MAIN_METERREF;
+    
 TYPE tab_meter IS TABLE OF cur_met%ROWTYPE INDEX BY PLS_INTEGER;
 t_met tab_meter;
 
@@ -138,18 +138,18 @@ BEGIN
     FOR i IN 1..t_met.COUNT
     LOOP
 
-        l_err.TXT_KEY := t_met(i).SPID_PK || ',' || t_met(i).MAINSAPEQUIPMENT;
+        l_err.TXT_KEY := t_met(i).SPID_PK || ',' || t_met(i).MAIN_METERREF;
         l_mo := NULL;
         l_rec_exc := FALSE;
         l_rec_war := false;
 
-        l_mo.MAIN_METERREF :=  t_met(i).MAINSAPEQUIPMENT;
+        l_mo.MAIN_METERREF :=  t_met(i).MAIN_METERREF;
         l_mo.MAIN_STWPROPERTYNUMBER_PK :=  t_met(i).MAIN_STWPROPERTYNUMBER_PK;
         l_mo.MASTER_PROPERTY  := t_met(i).MAIN_STWPROPERTYNUMBER_PK;
         l_mo.MAIN_MANUFACTURER_PK :=  t_met(i).MAINMANUFACTURER;
         l_mo.MAIN_MANSERIALNUM_PK :=  t_met(i).MAINMANUFACTURERSERIALNUM;
         l_mo.MAIN_SPID :=  t_met(i).SPID_PK;
-        l_mo.SUB_METERREF :=  t_met(i).SUBSAPEQUIPMENT;
+        l_mo.SUB_METERREF :=  t_met(i).SUB_METERREF;
         l_mo.SUB_STWPROPERTYNUMBER_PK :=  t_met(i).SUB_STWPROPERTYNUMBER_PK;
         l_mo.SUB_MANUFACTURER_PK :=  t_met(i).SUBMANUFACTURER;
         l_mo.SUB_MANSERIALNUM_PK :=  t_met(i).SUBMANUFACTURERSERIALNUM;
@@ -194,18 +194,18 @@ BEGIN
         IF l_rec_written THEN
             l_no_row_insert := l_no_row_insert + 1;
             l_curr_meter_written := TRUE;
-            IF (l_prev_met <> t_met(i).MAINSAPEQUIPMENT) THEN
+            IF (l_prev_met <> t_met(i).MAIN_METERREF) THEN
                 l_no_meter_written := l_no_meter_written + 1;
             END IF;
 --              l_prev_am_reading := t_met(i).AM_READING;
 --              l_prev_readdate := TO_CHAR(t_met(i).TS_CAPTURED, 'DD-MON-YYYY');
         ELSE
             l_no_row_dropped := l_no_row_dropped + 1;
-            IF (l_prev_met <> t_met(i).MAINSAPEQUIPMENT AND l_curr_meter_written = FALSE) THEN
+            IF (l_prev_met <> t_met(i).MAIN_METERREF AND l_curr_meter_written = FALSE) THEN
                 l_no_meter_dropped := l_no_meter_dropped + 1;
             END IF;
         END IF;
-        l_prev_met := t_met(i).MAINSAPEQUIPMENT;
+        l_prev_met := t_met(i).MAIN_METERREF;
 
     END LOOP;
 

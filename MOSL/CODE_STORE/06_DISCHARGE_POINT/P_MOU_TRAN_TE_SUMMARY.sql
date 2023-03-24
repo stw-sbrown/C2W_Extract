@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_TE_SUMMARY.sql
 --
--- Subversion $Revision: 5284 $
+-- Subversion $Revision: 5458 $
 --
 -- CREATED        : 10/05/2016
 --
@@ -31,6 +31,7 @@ IS
 -- V 0.05      01/07/2016  L. Smith   Populate new column SEWERAGEVOLUMEADJMENTHOD
 -- V 0.06      07/07/2106  L. Smith   Use parameter no_batch in cursor
 -- V 0.07      28/07/2016  L. Smith   I322 
+-- V 0.08      09/09/2016  L. Smith   Process period 16 working data
 -----------------------------------------------------------------------------------------
 
   c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_TE_SUMMARY';
@@ -285,7 +286,7 @@ SELECT
                                    AND stage = ltbc_cycle_number
 --where no_iwcs in (14427001101, 14427001102, 12509002501)
 --                           ) WHERE period + 1 >= latest_period
-                           ) WHERE period = latest_period
+                           ) WHERE period = 16  -- latest_period
                     GROUP BY no_iwcs, period
             )
     )

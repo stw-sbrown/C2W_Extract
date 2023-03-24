@@ -9,7 +9,7 @@ PROCEDURE P_MOU_DEL_METER_SUPPLY_POINT (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYP
 --
 -- FILENAME       : P_MOU_DEL_METER_SUPPLY_POINT.sql
 --
--- Subversion $Revision: 5333 $
+-- Subversion $Revision: 5458 $
 --
 -- CREATED        : 12/04/2016
 --
@@ -59,7 +59,6 @@ PROCEDURE P_MOU_DEL_METER_SUPPLY_POINT (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYP
   l_tablename VARCHAR2(100) := 'DEL_METER_SUPPLY_POINT';
 
   l_sql VARCHAR2(2000);
---  fHandle UTL_FILE.FILE_TYPE;
   
   -- Cross Border Control cursor
   CURSOR cb_cur IS
@@ -173,41 +172,6 @@ BEGIN
         -- keep count of records written
         IF l_rec_written THEN
            l_no_row_insert := l_no_row_insert + 1;
-
---          BEGIN
---            l_progress := 'write row export file ';
---
---            UTL_FILE.PUT(fHandle,t_meter_sp(i).MANUFACTURERSERIALNUM_PK || '|');
---            UTL_FILE.PUT(fHandle,t_meter_sp(i).MANUFACTURER_PK || '|');
---            UTL_FILE.PUT_LINE(fHandle,t_meter_sp(i).SPID_PK); -- V 0.04
---
---          EXCEPTION
---            WHEN OTHERS THEN
---                 l_rec_written := FALSE;
---                 l_error_number := SQLCODE;
---                 l_error_message := SQLERRM;
---
---                 P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', substr(l_error_message,1,100),  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
---                 l_no_row_exp := l_no_row_exp + 1;
---
---                 -- if tolearance limit has een exceeded, set error message and exit out
---                 IF (   l_no_row_exp > l_job.EXP_TOLERANCE
---                     OR l_no_row_err > l_job.ERR_TOLERANCE
---                     OR l_no_row_war > l_job.WAR_TOLERANCE)
---                 THEN
---                     CLOSE cur_meter_sp;
---                     l_job.IND_STATUS := 'ERR';
---                     P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', 'Error tolerance level exceeded',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
---                     P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
---                     COMMIT;
---                     return_code := -1;
---                     RETURN;
---                  END IF;
---          END;
---
---          IF l_rec_written THEN
---             l_no_row_written := l_no_row_written + 1;
---          END IF;
         END IF;
     END LOOP;
 
@@ -240,6 +204,19 @@ BEGIN
       l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
       P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
       l_no_row_written := l_no_row_written + l_rows_written; -- add rows written to total
+
+      IF w.WHOLESALER_ID NOT LIKE 'SEVERN%' THEN
+        l_filename := 'OWC_METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
+        l_sql := 'SELECT SP.*
+                  FROM DEL_SUPPLY_POINT STW,
+                    DEL_METER DM,
+                    DEL_METER_SUPPLY_POINT_STW_V SP
+                  WHERE STW.OTHERWHOLESALERID = ''' || w.WHOLESALER_ID || '''
+                  AND DM.SPID = STW.SPID_PK
+                  AND DM.MANUFACTURER_PK = SP.MANUFACTURER_PK
+                  AND DM.MANUFACTURERSERIALNUM_PK = SP.MANUFACTURERSERIALNUM_PK';
+        P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);       
+      END IF;        
     ELSE
       l_sql := 'SELECT COUNT(*) FROM DEL_METER_SUPPLY_POINT MSP, DEL_SUPPLY_POINT SP WHERE MSP.SPID_PK = SP.SPID_PK AND SP.WHOLESALERID = :wholesaler';
       EXECUTE IMMEDIATE l_sql INTO l_count USING w.WHOLESALER_ID;

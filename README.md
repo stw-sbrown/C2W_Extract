@@ -32,10 +32,11 @@ No merging in Git.
 
 9. Import SVN Branch FIN REV 5391 (FIN_Build01)
 10. Create Git Tag FIN_Build01
---HERE
 
-11. Import SVN Branch FIN REV 6458 (tip)
+11. Import SVN Branch FIN REV 5458 (tip)
+--HERE
 12. Create Git Tag FIN_SVN_TIP
+
 
 13. Import SVN Trunk Tip REV6407 (tip)
 14. Tag Git Main as main_MSOL_Build106

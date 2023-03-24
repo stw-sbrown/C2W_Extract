@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_METER_TARGET.sql
 --
--- Subversion $Revision: 5284 $
+-- Subversion $Revision: 5458 $
 --
 -- CREATED        : 11/03/2016
 --
@@ -23,6 +23,8 @@ IS
 --
 -- Version     Date                Author         CR/DEF  Description
 -- ---------   ---------------     -------        ------  ----------------------------------
+-- v 9.24      08/09/2016          D.Cheung               Reverted to previous code version to back out I-352 fixes (report to business instead to fix data)
+-- v 9.23      05/09/2016          D.Cheung               I-352 - Change to get CORESPID, SPID and FG_NMM from LOGICAL properties
 -- V 9.22      25/08/2016          D.Cheung               I-350 - Duplicate Meterref exception caused by RTS returning two values
 -- V 9.21      23/08/2016          D.Cheung               Appending properties in LU_SPID_OWC_RETAILER 
 -- v 9.20      22/08/2016          D.Cheung               I-342 - Fixed join issue on RTS

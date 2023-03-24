@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_METER_TE.sql
 --
--- Subversion $Revision: 5284 $
+-- Subversion $Revision: 5458 $
 --
 -- CREATED        : 24/05/2016
 --
@@ -37,6 +37,8 @@ IS
 -- V 3.09      10/08/2016          S.Badhan               I-331 - for PRIVATETE meters set SewerageChargableMeterSize to 0 and 
 --                                                        Return to Sewer to null as per CSD 0104.
 -- V 3.10      23/08/2016          D.Cheung               I-347 - MOSL Test 3 feedback - Not evaluating Numberofdigits correctly (less than length of readings)
+-- V 3.11      08/09/2016          D.Cheung               Chenge serialnum logic to just get from NO_IWCS || MER_REF
+-- V 3.12      13/09/2016          D.Cheung               I-356 - Add rule to check Sewerage Service Component Exists
 -----------------------------------------------------------------------------------------
 --prerequsite
   c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_METER_TE';  -- modify
@@ -59,6 +61,7 @@ IS
   --l_rec_war                     BOOLEAN;
   l_mo_stw_balanced_yn          VARCHAR2(1);
   l_index_count                 NUMBER;
+  l_sc_count                    NUMBER;
 
 CURSOR CUR_MET (P_NO_EQUIPMENT_START   MO_METER.METERREF%type,
                  P_NO_EQUIPMENT_END     MO_METER.METERREF%type)
@@ -69,7 +72,8 @@ CURSOR CUR_MET (P_NO_EQUIPMENT_START   MO_METER.METERREF%type,
               , MD.SPID_PK
               , MD.DPID_PK
               , 'UNKNOWN' AS NM_PREFERRED
-              , TRIM(REPLACE(UPPER(NVL(BTW.SERIAL_NO, BTW.NO_IWCS || BTW.MET_REF)),' ','')) AS NO_UTL_EQUIP
+--              , TRIM(REPLACE(UPPER(NVL(BTW.SERIAL_NO, BTW.NO_IWCS || BTW.MET_REF)),' ','')) AS NO_UTL_EQUIP   --v3.11
+              , TRIM(REPLACE(UPPER(BTW.NO_IWCS || BTW.MET_REF),' ','')) AS NO_UTL_EQUIP     --v3.11
               , CASE BTW.TE_CATEGORY WHEN 'Private Water Meter' THEN 0 ELSE NULL END AS PHYSICALMETERSIZE   --V1.01
               , GREATEST(BTWM.LEN_START, BTWM.LEN_END, 4) AS NUMBEROFDIGITS   --V1.01
               , UPPER(TRIM(BTW.UNIT)) AS CD_UNIT_OF_MEASURE
@@ -238,6 +242,39 @@ BEGIN
                         L_REC_EXC := true;
                 END;
                 --L_MO.MANUFACTURER_PK := REPLACE(UPPER(T_MET(I).NM_PREFERRED),' ','_');
+                
+--*** v3.12 - check for service component
+                IF (TRIM(T_MET(I).SPID_PK) IS NOT NULL AND T_MET(I).METERTREATMENT = 'PRIVATEWATER') THEN
+                    BEGIN
+                        SELECT COUNT(*)
+                        INTO   l_sc_count
+                        FROM   MO_SERVICE_COMPONENT
+                        WHERE  SPID_PK = t_met(I).SPID_PK
+                            AND SERVICECOMPONENTTYPE IN ('AS','US','SW','MS')
+                        ;
+                    
+                        IF (l_sc_count = 0) THEN
+                            P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('NO Service Component for PRIVATEWATER Meter',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
+                            L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
+                            L_REC_EXC := true;
+                        END IF;
+                    END;
+                ELSIF (TRIM(T_MET(I).SPID_PK) IS NOT NULL) THEN
+                    BEGIN
+                        SELECT COUNT(*)
+                        INTO   l_sc_count
+                        FROM   MO_DISCHARGE_POINT
+                        WHERE  SPID_PK = t_met(I).SPID_PK
+                            AND SERVICECOMPTYPE IN ('TE')
+                        ;
+                    
+                        IF (l_sc_count = 0) THEN
+                            P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('NO Discharge Point for PRIVATETE Meter',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
+                            L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
+                            L_REC_EXC := true;
+                        END IF;
+                    END;
+                END IF;
                 
                 IF T_MET(I).METERTREATMENT = 'PRIVATETE' THEN 
                    T_MET(I).RETURNTOSEWER := NULL;

@@ -9,7 +9,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_DISCHARGE_POINT.sql
 --
--- Subversion $Revision: 5194 $
+-- Subversion $Revision: 5458 $
 --
 -- CREATED        : 05/04/2016
 --
@@ -213,6 +213,11 @@ BEGIN
         AND    TP_ENTITY_332 = 'S' 
         AND    NO_EXT_REFERENCE IN (4);
       EXCEPTION
+      WHEN NO_DATA_FOUND THEN
+           l_rec_written := FALSE;
+           P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'X', 'No Target discharge point found',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress || ',' || l_mo.DPID_PK, 1,100));
+           l_no_row_exp := l_no_row_exp + 1;
+           l_ext.CD_EXT_REF := null;
       WHEN TOO_MANY_ROWS THEN
            l_rec_written := FALSE;
            P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'X', 'More than 1 active tariff for service provision',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress || ',' || l_mo.DPID_PK, 1,100));
@@ -239,6 +244,11 @@ BEGIN
         AND    TP_ENTITY_332 = 'S' 
         AND    NO_EXT_REFERENCE IN (1);
       EXCEPTION
+      WHEN NO_DATA_FOUND THEN
+           l_rec_written := FALSE;
+           P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'X', 'No Target Sample point found',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress || ',' || l_mo.DPID_PK, 1,100));
+           l_no_row_exp := l_no_row_exp + 1;
+           l_ext2.CD_EXT_REF := null;
       WHEN TOO_MANY_ROWS THEN
            l_rec_written := FALSE;
            P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'X', 'More than 1 active tariff for service provision',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress || ',' || l_mo.DPID_PK, 1,100));

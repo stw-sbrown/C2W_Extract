@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_TE_WORKING.sql
 --
--- Subversion $Revision: 5333 $
+-- Subversion $Revision: 5458 $
 --
 -- CREATED        : 13/05/2016
 --
@@ -25,6 +25,7 @@ IS
 -- V 0.01      13/05/2016  L.Smith    Initial version
 -- V 0.02      07/06/2016  L.Smith    Column rounding
 -- V 0.03      01/09/2016  L.Smith    Period 16 only
+-- V 0.04      09/09/2016  L.Smith    Period 13 to present
 -----------------------------------------------------------------------------------------
 
   c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_TRAN_TE_WORKING';
@@ -302,10 +303,7 @@ CURSOR cur_te_working
                        ROW_NUMBER() OVER (PARTITION BY no_iwcs, period, stage, met_ref
                                           ORDER BY no_iwcs, period DESC, stage, met_ref, NVL(end_read,0) DESC, NVL(start_read,0) DESC, NVL(te_vol,0) DESC ) latest_iwcs
                   FROM teaccess.meter_data md
-                 WHERE period = 16                                    -- Business currently requires period 16 data only
---                 WHERE period BETWEEN 14 AND 16                       -- Business currently requires at least one years data
---                   AND start_date IS NOT NULL                       -- Filter inactive accounts
---                   AND NVL(end_date,sysdate) >= sysdate             -- Filter inactive accounts
+                 WHERE period >= 13                                    -- Business currently requires period 16 data only
                ) te_working_data
           -- Join to cus_data to derive the no_account
           LEFT OUTER JOIN teaccess.cus_data cd
@@ -401,12 +399,14 @@ BEGIN
            t_te_working(i).te_vol_filtered,       l_te_vol_calc,                                   l_ouw_vol_calc);
       EXCEPTION
           WHEN OTHERS THEN 
+          IF t_te_working(i).period = 16 THEN
              l_no_row_dropped := l_no_row_dropped + 1;
              l_rec_written := FALSE;
              l_error_number := SQLCODE;
              l_error_message := SQLERRM;
              P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', substr(l_error_message,1,100),  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
              l_no_row_err := l_no_row_err + 1;
+          END IF;
       END;
 
       IF l_rec_written AND NVL(t_te_working(i).end_read_calculated,0) != NVL(t_te_working(i).end_read_check,0) THEN

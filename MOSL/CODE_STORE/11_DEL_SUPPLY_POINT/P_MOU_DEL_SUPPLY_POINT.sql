@@ -9,7 +9,7 @@ PROCEDURE P_MOU_DEL_SUPPLY_POINT(no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
 --
 -- FILENAME       : P_MOU_DEL_SUPPLY_POINT.sql
 --
--- Subversion $Revision: 5333 $
+-- Subversion $Revision: 5458 $
 --
 -- CREATED        : 07/04/2016
 --
@@ -61,7 +61,6 @@ PROCEDURE P_MOU_DEL_SUPPLY_POINT(no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
   l_tablename VARCHAR2(100) := 'DEL_SUPPLY_POINT';
 
   l_sql VARCHAR2(2000);
---  fHandle UTL_FILE.FILE_TYPE;
   
   -- Cross Border Control cursor
   CURSOR cb_cur IS
@@ -269,6 +268,16 @@ BEGIN
       l_filename := 'SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
       P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
       l_no_row_written := l_no_row_written + l_rows_written; -- add rows written to total
+
+      IF w.WHOLESALER_ID NOT LIKE 'SEVERN%' THEN
+        l_filename := 'OWC_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
+        l_sql := 'SELECT  STW.*,MSP.SPID_PK SPID_S 
+                  FROM DEL_SUPPLY_POINT_STW_V STW, MOUTRAN.MO_SUPPLY_POINT MSP 
+                  WHERE STW.OTHERWHOLESALERID = ''' || w.WHOLESALER_ID || ''' 
+                  AND SUBSTR(STW.SPID_PK,0,10) = MSP.CORESPID_PK 
+                  AND MSP.SERVICECATEGORY = ''S''';
+        P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
+      END IF;
     ELSE
       l_sql := 'SELECT COUNT(*) FROM DEL_SUPPLY_POINT WHERE WHOLESALERID = :wholesaler';
       EXECUTE IMMEDIATE l_sql INTO l_count USING w.WHOLESALER_ID;

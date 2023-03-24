@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_SUPPLY_POINT.sql
 --
--- Subversion $Revision: 5284 $
+-- Subversion $Revision: 5458 $
 --
 -- CREATED        : 10/03/2016
 --
@@ -23,6 +23,7 @@ IS
 --
 -- Version     Date        Author     Description
 -- ---------   ----------  -------    ---------------------------------------------------
+-- V 1.10      12/09/2016  D.Cheung   I-355 - Interim workaround for future spid effectivedate dates issue - set to current date
 -- V 1.09      26/08/2016  S.Badhan   I-320. Lookup SAP_FLOC if currently null.
 -- V 1.08      15/08/2016  O.Badmus   Inclusion of properties that switched to OWC IN ORDER TO GET THEIR SPIDS
 -- V 1.07      01/06/2016  K.Burton   I-267 - Correction to change put in for I-255. Cannot have value in PAIRINGREFREASONCODE and OTHERWHOLESALERID
@@ -263,6 +264,11 @@ BEGIN
 
             l_progress := 'DETERMINE DISCONNECTION STATUS ';
             l_sp.SUPPLYPOINTEFFECTIVEFROMDATE := t_prop(i).T056_DT_START;
+--v1.10 interim workaround for future date issue
+            IF (l_sp.SUPPLYPOINTEFFECTIVEFROMDATE > SYSDATE) THEN
+                l_sp.SUPPLYPOINTEFFECTIVEFROMDATE := SYSDATE;
+            END IF;
+--v1.10            
 
              CASE   t_prop(i).ST_SERV_PROV
                WHEN 'D' THEN

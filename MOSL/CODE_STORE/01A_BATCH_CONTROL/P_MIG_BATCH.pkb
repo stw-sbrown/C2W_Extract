@@ -8,7 +8,7 @@ IS
 --
 -- FILENAME       : P_MIG_BATCH.pkb
 --
--- Subversion $Revision: 5214 $
+-- Subversion $Revision: 5458 $
 -- CREATED        : 23/02/2016
 --
 -- DESCRIPTION    : Package containing common procedures for batch migration
@@ -20,6 +20,7 @@ IS
 --
 -- Version     Date                Author         Description
 -- ---------   ---------------     -------        --------------------------------------
+-- V 1.18      09/09/2016          D.Cheung       Performance fix - remove gather stats as now redundant
 -- V 1.17      04/08/2016          D.Cheung       Performance issues due to bad stats.
 -- V 1.16      26/07/2016          S.Badhan       I-312 removed as cannot use in a transaction
 -- V 1.15      20/07/2016          S.Badhan       I-312 - Enable parallel processing for session.
@@ -136,10 +137,10 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
-  ELSE
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_TVP054');
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_TVP163');
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_MISS_AG_SC');
+--  ELSE
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_TVP054');
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_TVP163');
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_MISS_AG_SC');
    END IF;
 
 
@@ -171,8 +172,8 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
-   ELSE
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_CLOCKOVER');
+--   ELSE
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_CLOCKOVER');
    END IF;
 
 -- 1d. Service Component  (pre tables)
@@ -188,16 +189,16 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
-  ELSE
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF');
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF_ALG');
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF_ALGITEM');
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF_SPLIT');
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF_REFTAB');
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF_EXTREF');
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SPR_TARIFF');
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SPR_TARIFF_ALGITEM');
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SPR_TARIFF_EXTREF');
+--  ELSE
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF');
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF_ALG');
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF_ALGITEM');
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF_SPLIT');
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF_REFTAB');
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SP_TARIFF_EXTREF');
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SPR_TARIFF');
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SPR_TARIFF_ALGITEM');
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SPR_TARIFF_EXTREF');
    END IF;
 
 -- 1d. Service Component  (MPW)
@@ -213,8 +214,8 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
-  ELSE
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SC_MPW');
+--  ELSE
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SC_MPW');
    END IF;
 
 -- 1d. Service Component  (UW)
@@ -230,8 +231,8 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
-  ELSE
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SC_UW');
+--  ELSE
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SC_UW');
    END IF;
 
 -- 1e. Service Component  (AS)
@@ -247,8 +248,8 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
-  ELSE
-     DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SC_AS');
+--  ELSE
+--     DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_SC_AS');
    END IF;
    
 -- 1e. TE Working
@@ -264,8 +265,8 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
-    ELSE
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_TE_WORKING');
+--    ELSE
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_TE_WORKING');
    END IF;
 
 
@@ -282,8 +283,8 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
-  ELSE
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_TE_SUMMARY');
+--  ELSE
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_TE_SUMMARY');
    END IF;
 
 -- End of Initialisation Jobs
@@ -335,8 +336,8 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
-   ELSE
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'MO_SERVICE_COMPONENT');
+--   ELSE
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'MO_SERVICE_COMPONENT');
    END IF;
 
 -- 4b. Discharge Point
@@ -382,8 +383,8 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
-  ELSE
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_METER_READ_FREQ');
+--  ELSE
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_METER_READ_FREQ');
    END IF;
    
 -- 5d. Meter (TE)  -I-302
@@ -429,8 +430,8 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
-  ELSE
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_METER_NETWORK');
+--  ELSE
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_METER_NETWORK');
    END IF;
 
 -- 5e. Meter to Discharge Point Association (TE)
@@ -506,8 +507,8 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
-  ELSE
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_INSTALL_ADDRESS');
+--  ELSE
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_INSTALL_ADDRESS');
    END IF;
    
 -- 9. Bad data reporting
@@ -523,8 +524,8 @@ BEGIN
       FN_UPDATEBATCH('ERR');
       DBMS_OUTPUT.PUT_LINE(to_char(SYSDATE,'HH24:MI:SS') || ' -  MIGRATION_BATCH Ended With errors  !!!!!');
       RETURN;
-  ELSE
-      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_BAD_DATA');
+--  ELSE
+--      DBMS_STATS.gather_table_stats('MOUTRAN', 'BT_BAD_DATA');
    END IF;   
 
    -- successful run
@@ -888,6 +889,4 @@ END FN_RECONLOG;
 
 END P_MIG_BATCH;
 /
-show errors;
 exit;
-

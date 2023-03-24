@@ -9,7 +9,7 @@ PROCEDURE P_MOU_DEL_DISCHARGE_POINT (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
 --
 -- FILENAME       : P_MOU_DEL_DISCHARGE_POINT.sql
 --
--- Subversion $Revision: 5333 $
+-- Subversion $Revision: 5458 $
 --
 -- CREATED        : 12/04/2016
 --
@@ -270,6 +270,11 @@ BEGIN
       l_filename := 'DISCHARGE_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
       P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
       l_no_row_written := l_no_row_written + l_rows_written; -- add rows written to total
+
+      IF w.WHOLESALER_ID NOT LIKE 'SEVERN%' THEN
+        l_filename := 'OWC_DISCHARGE_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
+        P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
+      END IF;
     ELSE
       l_sql := 'SELECT COUNT(*) FROM DEL_DISCHARGE_POINT DP, DEL_SUPPLY_POINT SP WHERE DP.SPID_PK = SP.SPID_PK AND SP.WHOLESALERID = :wholesaler';
       EXECUTE IMMEDIATE l_sql INTO l_count USING w.WHOLESALER_ID;

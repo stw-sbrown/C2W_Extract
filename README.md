@@ -34,8 +34,9 @@ No merging in Git.
 10. Create Git Tag FIN_Build01
 
 11. Import SVN Branch FIN REV 5458 (tip)
---HERE
+12. Checked against SVN and removed files and folders from updates (imports are just snapshots)
 12. Create Git Tag FIN_SVN_TIP
+--here
 
 
 13. Import SVN Trunk Tip REV6407 (tip)

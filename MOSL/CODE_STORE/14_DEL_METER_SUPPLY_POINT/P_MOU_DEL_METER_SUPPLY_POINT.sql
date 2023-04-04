@@ -9,7 +9,7 @@ PROCEDURE P_MOU_DEL_METER_SUPPLY_POINT (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYP
 --
 -- FILENAME       : P_MOU_DEL_METER_SUPPLY_POINT.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5453 $
 --
 -- CREATED        : 12/04/2016
 --
@@ -31,6 +31,9 @@ PROCEDURE P_MOU_DEL_METER_SUPPLY_POINT (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYP
 --                                    files
 -- V 1.02      18/05/2016  K.Burton   Changes to MANUFACTURER_PK to remove spaces from names as per
 --                                    MOSL upload file feedback
+-- V 1.03      13/07/2016  D.Cheung   I-291 - Add DISTINCT to main cursor to filter meters on multiple logical properties
+-- V 1.03      25/08/2016  S.Badhan   I-320. If user FINDEL use directory FINEXPORT.
+-- V 1.04      01/09/2016  K.Burton   Updates for splitting STW data into 3 batches
 -----------------------------------------------------------------------------------------
 
   c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_DEL_METER_SUPPLY_POINT';
@@ -56,7 +59,6 @@ PROCEDURE P_MOU_DEL_METER_SUPPLY_POINT (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYP
   l_tablename VARCHAR2(100) := 'DEL_METER_SUPPLY_POINT';
 
   l_sql VARCHAR2(2000);
---  fHandle UTL_FILE.FILE_TYPE;
   
   -- Cross Border Control cursor
   CURSOR cb_cur IS
@@ -69,7 +71,7 @@ PROCEDURE P_MOU_DEL_METER_SUPPLY_POINT (no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYP
            MANUFACTURER_PK,
            SPID_PK
     FROM (
-    SELECT MS.MANUFACTURERSERIALNUM_PK,
+    SELECT DISTINCT MS.MANUFACTURERSERIALNUM_PK,
            MS.MANUFACTURER_PK MANUFACTURER,
            UPPER(REPLACE(MS.MANUFACTURER_PK,' ','')) MANUFACTURER_PK, -- V 1.02
            MS.SPID SPID_PK
@@ -95,6 +97,10 @@ BEGIN
    L_NO_ROW_EXP := 0;
    l_job.IND_STATUS := 'RUN';
 
+   IF USER = 'FINDEL' THEN
+      l_filepath := 'FINEXPORT';
+   END IF;
+   
    -- get job no and start job
    P_MIG_BATCH.FN_STARTJOB(no_batch, no_job, c_module_name,
                          l_job.NO_INSTANCE,
@@ -166,41 +172,6 @@ BEGIN
         -- keep count of records written
         IF l_rec_written THEN
            l_no_row_insert := l_no_row_insert + 1;
-
---          BEGIN
---            l_progress := 'write row export file ';
---
---            UTL_FILE.PUT(fHandle,t_meter_sp(i).MANUFACTURERSERIALNUM_PK || '|');
---            UTL_FILE.PUT(fHandle,t_meter_sp(i).MANUFACTURER_PK || '|');
---            UTL_FILE.PUT_LINE(fHandle,t_meter_sp(i).SPID_PK); -- V 0.04
---
---          EXCEPTION
---            WHEN OTHERS THEN
---                 l_rec_written := FALSE;
---                 l_error_number := SQLCODE;
---                 l_error_message := SQLERRM;
---
---                 P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', substr(l_error_message,1,100),  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
---                 l_no_row_exp := l_no_row_exp + 1;
---
---                 -- if tolearance limit has een exceeded, set error message and exit out
---                 IF (   l_no_row_exp > l_job.EXP_TOLERANCE
---                     OR l_no_row_err > l_job.ERR_TOLERANCE
---                     OR l_no_row_war > l_job.WAR_TOLERANCE)
---                 THEN
---                     CLOSE cur_meter_sp;
---                     l_job.IND_STATUS := 'ERR';
---                     P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', 'Error tolerance level exceeded',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
---                     P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
---                     COMMIT;
---                     return_code := -1;
---                     RETURN;
---                  END IF;
---          END;
---
---          IF l_rec_written THEN
---             l_no_row_written := l_no_row_written + 1;
---          END IF;
         END IF;
     END LOOP;
 
@@ -210,60 +181,49 @@ BEGIN
     CASE w.WHOLESALER_ID 
       WHEN 'ANGLIAN-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_ANW_V';
-        l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SUPPLY_POINT_ANW_V;
-        END IF;
       WHEN 'DWRCYMRU-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_WEL_V';
-        l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SUPPLY_POINT_WEL_V;
-        END IF;
       WHEN 'SEVERN-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_STW_V';
-        l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SUPPLY_POINT_STW_V;
-        END IF;
+      WHEN 'SEVERN-A' THEN
+        l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_STWA_V';
+      WHEN 'SEVERN-B' THEN
+        l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_STWB_V';
       WHEN 'THAMES-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_THW_V';
-        l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SUPPLY_POINT_THW_V;
-        END IF;
       WHEN 'WESSEX-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_WEW_V';
-        l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SUPPLY_POINT_WEW_V;
-        END IF;
       WHEN 'YORKSHIRE-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_YOW_V';
-        l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SUPPLY_POINT_YOW_V;
-        END IF;
       WHEN 'UNITED-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_UUW_V';
-        l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SUPPLY_POINT_UUW_V;
-        END IF;
       WHEN 'SOUTHSTAFF-W' THEN
         l_sql := 'SELECT * FROM DEL_METER_SUPPLY_POINT_SSW_V';
-        l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_METER_SUPPLY_POINT_SSW_V;
-        END IF;
     END CASE;
     IF w.RUN_FLAG = 1 THEN
+      l_filename := 'METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
       P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
       l_no_row_written := l_no_row_written + l_rows_written; -- add rows written to total
+
+      IF w.WHOLESALER_ID NOT LIKE 'SEVERN%' THEN
+        l_filename := 'OWC_METER_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
+        l_sql := 'SELECT SP.*
+                  FROM DEL_SUPPLY_POINT STW,
+                    DEL_METER DM,
+                    DEL_METER_SUPPLY_POINT_STW_V SP
+                  WHERE STW.OTHERWHOLESALERID = ''' || w.WHOLESALER_ID || '''
+                  AND DM.SPID = STW.SPID_PK
+                  AND DM.MANUFACTURER_PK = SP.MANUFACTURER_PK
+                  AND DM.MANUFACTURERSERIALNUM_PK = SP.MANUFACTURERSERIALNUM_PK';
+        P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);       
+      END IF;        
     ELSE
+      l_sql := 'SELECT COUNT(*) FROM DEL_METER_SUPPLY_POINT MSP, DEL_SUPPLY_POINT SP WHERE MSP.SPID_PK = SP.SPID_PK AND SP.WHOLESALERID = :wholesaler';
+      EXECUTE IMMEDIATE l_sql INTO l_count USING w.WHOLESALER_ID;
       l_no_row_dropped_cb := l_no_row_dropped_cb + l_count;
-    END IF;  END LOOP;
-  
+    END IF;
+  END LOOP;
+
     IF t_meter_sp.COUNT < l_job.NO_COMMIT THEN
        EXIT;
     ELSE
@@ -273,7 +233,6 @@ BEGIN
   END LOOP;
 
   CLOSE cur_meter_sp;
---  UTL_FILE.FCLOSE(fHandle);
 
   -- archive the latest batch
   P_DEL_UTIL_ARCHIVE_TABLE(p_tablename => l_tablename,

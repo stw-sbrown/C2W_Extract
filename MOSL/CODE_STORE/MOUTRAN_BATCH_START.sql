@@ -1,6 +1,14 @@
 -- N.Henderson 13/04/2016.
 -- V 0.11 
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5863 $
+--
+--------------------------- Modification History ---------------------------------------   
+--
+-- Version     Date        Author      Description
+-- ---------   ----------  -------     ---------------------------------------------------
+-- V 0.01      17/10/2016  S.Badhan    Removed constraints no longer used.
+-- V 0.02      13/04/2016  N.Henderson Initial version.
+-----------------------------------------------------------------------------------------
 --
 -- Modification history
 -- Added new FK disablements, also added 
@@ -62,7 +70,7 @@ alter table MO_METER_ADDRESS disable constraint FK_ADDRESS_PK03;
 alter table MO_METER_NETWORK disable constraint FK_METER_MANUFACT01;
 alter table MO_METER_NETWORK disable constraint FK_METER_MANUFACT02;
 alter table MO_METER_SPID_ASSOC disable constraint FK_METER_MANUFACT05;
-alter table MO_METER_DPIDXREF disable constraint FK_METER_READING_MANUFACT01;
+--alter table MO_METER_DPIDXREF disable constraint FK_METER_READING_MANUFACT01;
 alter table MO_METER_READING disable constraint FK_METER_READING_MANUFACT02;
 alter table MO_DISCHARGED_VOLUME disable constraint FK_DPID_PK03;
 alter table MO_SERVICE_COMPONENT disable constraint FK_DPID_PK01;
@@ -197,7 +205,7 @@ alter table MO_METER_ADDRESS enable constraint FK_ADDRESS_PK03;
 alter table MO_METER_NETWORK enable constraint FK_METER_MANUFACT01;
 alter table MO_METER_NETWORK enable constraint FK_METER_MANUFACT02;
 alter table MO_METER_SPID_ASSOC enable constraint FK_METER_MANUFACT05;
-alter table MO_METER_DPIDXREF enable constraint FK_METER_READING_MANUFACT01;
+--alter table MO_METER_DPIDXREF enable constraint FK_METER_READING_MANUFACT01;
 alter table MO_METER_READING enable constraint FK_METER_READING_MANUFACT02;
 alter table MO_DISCHARGED_VOLUME enable constraint FK_DPID_PK03;
 alter table MO_SERVICE_COMPONENT enable constraint FK_DPID_PK01;

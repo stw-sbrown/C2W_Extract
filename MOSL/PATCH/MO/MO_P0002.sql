@@ -6,7 +6,7 @@
 -- FILENAME       		: 	P00002.sql
 --
 --
--- Subversion $Revision: 4023 $	
+-- Subversion $Revision: 5300 $	
 --
 -- CREATED        		: 	25/02/2016
 --	
@@ -21,8 +21,9 @@
 --
 ---------------------------- Modification History ----------------------------------------------------------
 --
--- Version     		Date            Author         	Description
--- ---------      	----------      -------         ------------------------------------------------
+-- Version     	Date            Author         	Description
+-- ---------    ----------      -------         ------------------------------------------------
+-- V0.02		    31/08/2016			S.Badhan		    Remove CHK02_SERVICECOMPONENTTYPE. Set up in later patch correctly.
 -- V0.01		    25/02/2016			N.Henderson		Field MO_TARIFF.TARIFFNAME not long enough
 --                                                  Drop constraint CHK02_SERVICECOMPONENTTYPE
 --													Alter table and drop column TARIFFNAME.
@@ -37,13 +38,13 @@
 
 --V0.01
 -- Drop the constraint]
-alter table MO_TARIFF DROP CONSTRAINT CHK02_SERVICECOMPONENTTYPE;
+--alter table MO_TARIFF DROP CONSTRAINT CHK02_SERVICECOMPONENTTYPE;
 -- remove the field
 alter table MO_TARIFF drop column TARIFFNAME;
 -- add new field
 alter table MO_TARIFF add TARIFFNAME VARCHAR(255);
 -- add constraint
-ALTER TABLE MO_TARIFF ADD CONSTRAINT CHK02_SERVICECOMPONENTTYPE CHECK (SERVICECOMPONENTTYPE IN ('MPW','MNPW','AW','UW','MS','AS','US','SW','HD','TE','WCA','SCA'));
-commit;
+--ALTER TABLE MO_TARIFF ADD CONSTRAINT CHK02_SERVICECOMPONENTTYPE CHECK (SERVICECOMPONENTTYPE IN ('MPW','MNPW','AW','UW','MS','AS','US','SW','HD','TE','WCA','SCA'));
+--commit;
 exit;
 

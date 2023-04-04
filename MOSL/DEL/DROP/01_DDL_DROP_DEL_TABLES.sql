@@ -1,18 +1,27 @@
 --Statements to drop all objects associated with delivery tables
 --N Henderson
 --	
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5177 $
 --
 --14/04/2016
+--
+----------------------------------------------------------------------------------------
+-- Version     Date        Author     Description
+-- ---------   ----------  --------   --------------------------------------------------
+-- V 0.04      16/08/2016  S.Badhan   Add drop of FN_VALIDATE_GIS
+-- V 0.03      16/08/2016  S.Badhan   Added drop of triggers.
+-- V 0.02      15/08/2016  S.Badhan   Change order of drop of table to avoid constraint errors.
+----------------------------------------------------------------------------------------
+
 DROP TABLE BT_CROSSBORDER_CTRL;
 DROP TABLE DEL_SERVICE_COMPONENT;
-DROP TABLE DEL_METER;
+DROP TABLE DEL_CALCULATED_DISCHARGE;
 DROP TABLE DEL_METER_SUPPLY_POINT;
 DROP TABLE DEL_METER_NETWORK;
 DROP TABLE DEL_METER_READING;
-DROP TABLE DEL_DISCHARGE_POINT;
 DROP TABLE DEL_METER_DISCHARGE_POINT;
-DROP TABLE DEL_CALCULATED_DISCHARGE;
+DROP TABLE DEL_DISCHARGE_POINT;
+DROP TABLE DEL_METER;
 DROP TABLE DEL_SUPPLY_POINT;
 commit;
 
@@ -130,14 +139,12 @@ commit;
 
 --DROP FUNCTIONS
 DROP FUNCTION FN_VALIDATE_POSTCODE;
+DROP FUNCTION FN_VALIDATE_GIS;
 
 --DROP PACKAGES
 DROP PACKAGE P_MIG_BATCH;
 DROP PACKAGE P_MOU_DEL_TARIFF_EXPORT;
 
+
 commit;
 exit;
-
-
-
-

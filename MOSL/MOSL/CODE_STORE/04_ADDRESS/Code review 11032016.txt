@@ -1,9 +1,0 @@
-For Address (P_MOU_TRAN_ADDRESS)
-1 - Customer role check why 'C' is being used ? we only use 'P' elsewhere eg   t024.tp_cust_acct_role in ('P','C')<--query
-2 - Note : meter selection might need to change to be taken from eligible meters list <-- check when reviewing Ola's Meter proc
-3 - error and warning need to be captured during insert and written to errorlog & accounted for <--- defect 
-4 - no checks of read/write/drop counts And no check if tolerance levels exceeded <--- defect 
-5 - check performance of using BULK fetch and explain plan
-
-
-Please add the issues and defect to the central issue log and progress them to resolve. Then formally reply with the resolution to each above.

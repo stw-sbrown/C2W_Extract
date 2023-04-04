@@ -6,7 +6,7 @@
 -- FILENAME       		: 	DEL_P0001.sql
 --
 --
--- Subversion $Revision: 4023 $	
+-- Subversion $Revision: 5906 $	
 --
 -- CREATED        		: 	22/04/2016
 --	
@@ -21,7 +21,7 @@
 --
 -- Version     	  Date            Author         	Description
 -- ---------      ----------      -------         ----------------------------------------------------------
--- V0.01	  22/04/2016	  K.Burton        1. Alter constraints CH02_WATERCHARGEMETERSIZE and
+-- V0.01      	  22/04/2016	    K.Burton        1. Alter constraints CH02_WATERCHARGEMETERSIZE and
 --                                                   CH01_SEWCHARGEABLEMETERSIZE on table DEL_METER
 -- V0.02          25/04/2016      K.Burton        1. Remove unique key constraints from DEL_SERVICE_COMPONENT
 --                                                   table and replace with single composite key
@@ -30,6 +30,8 @@
 --                                                   DEL_DISCHARGE_POINT_TRG (Patch DEL_P0002.sql)
 -- V0.03          26/04/2016      K.Burton        1. Drop column COUNTRY from table DEL_METER (Defect 21)
 -- V0.04          06/05/2016      K.Burton        1. Add columns  METERREF and PREVMETERREF to DEL_METER_READING
+-- V0.05          11/07/2016      K.Burton        1. Add column NONMARKETMETERFLAG to DEL_METER
+-- V0.06          19/10/2016      S.Badhan        1. Remove slash at end
 ------------------------------------------------------------------------------------------------------------
 -- CHANGES
 -- DROP CONSTRAINTS AND REBUILD
@@ -94,7 +96,8 @@ commit;
 -- Column COUNTRY is not required in table DEL_METER
 ------------------------------------------------------------------------------------------------------------
 ALTER TABLE DEL_METER DROP COLUMN COUNTRY;
-
+ALTER TABLE DEL_METER DROP CONSTRAINT CH01_GPSX;
+ALTER TABLE DEL_METER DROP CONSTRAINT CH01_GPSY;
 commit;
 ------------------------------------------------------------------------------------------------------------
 -- CHANGES
@@ -109,5 +112,8 @@ ALTER TABLE DEL_METER_READING ADD PREVMETERREF NUMBER (9,0);
 -- Addition of column SPID to DEL_METER for cross border view generation
 ------------------------------------------------------------------------------------------------------------
 ALTER TABLE DEL_METER ADD SPID VARCHAR2(13);
-/
+ALTER TABLE DEL_METER ADD NONMARKETMETERFLAG NUMBER(1,0);
+
+show errors;
+
 exit;

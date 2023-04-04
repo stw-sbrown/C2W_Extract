@@ -1,5 +1,5 @@
-
-  CREATE OR REPLACE PROCEDURE P_MOU_TRAN_METER_READING (no_batch     IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
+create or replace
+PROCEDURE           P_MOU_TRAN_METER_READING (no_batch     IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
                                                 no_job            IN MIG_JOBREF.NO_JOB%TYPE,
                                                 return_code       IN OUT NUMBER )
 IS
@@ -10,7 +10,7 @@ IS
 --
 -- FILENAME       : P_MOU_TRAN_METER_READING.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 6130 $
 --
 -- CREATED        : 07/04/2016
 --
@@ -23,6 +23,33 @@ IS
 --
 -- Version     Date                Author         CR/DEF    Description
 -- ---------   ---------------     -------        ----      ----------------------------------
+-- v 9.14      07/11/2016          L.Smith                  Performance changes.
+-- v 9.13      07/11/2016          S.Badhan                 Performance changes.
+-- v 9.12      01/11/2016          D.Cheung                 I-352 - For Aggregates - set property as master
+-- V 9.11      26/09/2016          D.Cheung       CR_037    Exclude Non-billable reads
+-- V 9.10      21/09/2016          D.Cheung                 Performance changes - remove redundant joins from main cursor
+-- V 9.09      12/09/2016          D.Cheung                 I-355 - Interim workaround for future dates issue - set to current date
+-- V 9.08      02/08/2016          D.Cheung                 I-325 - MOSL rejections - initial meter read date before spid effective date
+-- V 9.07      26/07/2016          D.Cheung                 I-317 - MOSL rejections - include non-market meters
+-- V 9.06      18/07/2016          D.Cheung                 I.306 - Fix BUG causing NULL meter Reads
+--                                                          I-300 - Fix BUG with rollover alignment due to dropped readings
+-- V 9.05      15/07/2016          D.Cheung                 I-300 - MOSL Test2.2 rejection - need to check for duplicate readdate (using date part string)
+-- V 9.04      14/07/2016          D.Cheung                 I-295 - Get FIRST available read as INSTALL and INITIAL read
+-- V 9.03      13/07/2016          D.Cheung                 I-295 - Change of logic for INITIALMETERREADDATE required to meet MOSL rules
+-- V 9.02      21/06/2016          D.Cheung                 I-245 - MOSL change in guidance v1.7 remove restriction for flat readings
+-- V 9.01      14/06/2016          D.Cheung       D_52      I-234 - set Initial Read Dates to Supply Point Effective From Date if greater
+--                                                          Drop any readings before Supply Point effective from Date
+-- V 8.03      31/05/2016          D.Cheung       D_56      MOSL TEST1 Defect mr2 - Change rule to drop reading if SAME as previous
+-- V 8.02      27/05/2016          D.Cheung       CR_017    New busines rules for eliminating data Exceptions
+--                                                          2.	Meter Read Method Translation Table - Map Target Value of O (Service Order) to VISUAL.
+-- V 8.01      26/05/2016          D.Cheung       D_56      MOSL TEST1 Defect mr2 - ROLLOVERFLAG not set - change to same as ROLLOVERINDICATOR
+--                                                D_55      MOSL TEST1 Defect mr1 - Meter Read Date cannot be before 01-10-2014
+--                                                D_51      MOSL TEST1 Defect m1 - Remove spaces from ManufacturerSerialNum
+--                                                D_52      MOSL TEST1 Defect m2 - initial meter read date cannot be before SPID effective date
+-- V 7.03      24/05/2016          D.Cheung                 Change for TE - filter extract on POTABLE MeterTreatment
+-- V 7.02      23/05/2016          D.Cheung                 Add INSTALLEDPROPERTYNUMBER and MANUFCODE fields
+-- V 7.01      20/05/2016          D.Cheung       CR_015    MOSL requirement change - If Meter Read Type is I then Meter Read Method must be populated with the value VISUAL
+--                                                          MOSL requirement change - First read must be of type I
 -- V 6.01      12/05/2016          D.Cheung       CR_013    D40 - Added ESTIMATE Read Sources to Extract Criteria   
 -- V 5.01      11/05/2016          D.Cheung                 Issue I-220 - WORKAROUND for No Billiable reads
 --                                                           - get earliest available read as an Install-System Estimate (INFO-ONLY) read
@@ -66,50 +93,78 @@ IS
   l_no_meter_written            MIG_CPLOG.RECON_MEASURE_TOTAL%TYPE;
   l_no_meter_dropped            MIG_CPLOG.RECON_MEASURE_TOTAL%TYPE;
   l_curr_meter_written          BOOLEAN;
+  l_initialmeterreaddate        MO_METER_READING.INITIALMETERREADDATE%TYPE;
+  l_prev_readdate               VARCHAR2(15);
 
 CURSOR cur_met (P_NO_EQUIPMENT_START   BT_TVP163.NO_EQUIPMENT%type,
                  P_NO_EQUIPMENT_END     BT_TVP163.NO_EQUIPMENT%type)
     IS
 -- CR01 - CHANGE CURSOR TO ONLY GET METERS WRITTEN TO MO_METER
-      SELECT /*+ PARALLEL(MO,12) PARALLEL(T195,12) PARALLEL(T063,12) PARALLEL(T036,12) */
-      DISTINCT
-            TRIM(T036.NM_PREFERRED) NM_PREFERRED
-            , TRIM(MO.MANUFACTURERSERIALNUM_PK) NO_UTL_EQUIP
-                --, TRIM(TV163.NO_UTL_EQUIP) NO_UTL_EQUIP
-                --, TV163.NO_EQUIPMENT
-            , MO.METERREF NO_EQUIPMENT
-            , T195.TS_CAPTURED
-            , TRIM(T195.TP_READING) TP_READING
-            , NVL(T1.ROLLOVERINDICATOR,0) ROLLOVERINDICATOR
-            , 0 REREAD  -- **** ISSUE - CONVERT RULE REQUIRED
-            , TRIM(T195.AM_READING) AM_READING
-            , TRIM(T195.CD_MTR_RD_SRCE_98) CD_MTR_RD_SRCE_98
-            , 0 ROLLOVERFLAG
-      FROM
-          --BT_TVP163 TV163
-      MO_METER MO
-      LEFT JOIN CIS.TVP195READING T195 ON
-              --T195.NO_EQUIPMENT = TV163.NO_EQUIPMENT
-          T195.NO_EQUIPMENT = MO.METERREF
-          AND T195.TP_READING = 'M'
-          AND T195.CD_MTR_RD_SRCE_98 IN ('N','W','L','P','C','U','H','O','F','G','S','X')   --*** V4.01 and V6.01
-          AND T195.ST_READING_168 IN ('B','N')  --*** V 3.01
-          AND MONTHS_BETWEEN(SYSDATE, T195.TS_CAPTURED) <= 24
-      JOIN CIS.TVP063EQUIPMENT T063 ON
-              --T063.NO_EQUIPMENT = TV163.NO_EQUIPMENT
-          T063.NO_EQUIPMENT = MO.METERREF
-              --AND T063.CD_COMPANY_SYSTEM = TV163.CD_COMPANY_SYSTEM
-          AND TRIM(T063.CD_COMPANY_SYSTEM) = 'STW1'
-      JOIN CIS.TVP036LEGALENTITY T036 ON
-          T036.NO_LEGAL_ENTITY = T063.NO_BUSINESS
-      LEFT JOIN BT_CLOCKOVER T1 ON
-              --TV163.NO_EQUIPMENT = T1.STWMETERREF_PK
-          T1.STWMETERREF_PK = MO.METERREF
-          AND T1.METERREADDATE = T195.TS_CAPTURED
-          --WHERE  TV163.NO_EQUIPMENT BETWEEN p_no_equipment_start AND p_no_equipment_end
-      WHERE  MO.METERREF BETWEEN p_no_equipment_start AND p_no_equipment_end
-      AND MO.NONMARKETMETERFLAG = 0
-      ORDER BY MO.METERREF ASC, T195.TS_CAPTURED ASC;
+      SELECT DISTINCT * FROM (
+          SELECT /*+ FULL(T195) PARALLEL(MO 6) PARALLEL(T195 6) PARALLEL(MSP 6) PARALLEL(T1 6) */ 
+                TRIM(MO.MANUFACTURER_PK) NM_PREFERRED   -- V8.01
+                , TRIM(MO.MANUFACTURERSERIALNUM_PK) NO_UTL_EQUIP
+                , MO.METERREF NO_EQUIPMENT
+                , T195.TS_CAPTURED
+                , TRIM(T195.TP_READING) TP_READING
+                , NVL(T1.ROLLOVERINDICATOR,0) ROLLOVERINDICATOR
+                , 0 REREAD  -- **** ISSUE - CONVERT RULE REQUIRED
+                , TRIM(T195.AM_READING) AM_READING
+                , TRIM(T195.CD_MTR_RD_SRCE_98) CD_MTR_RD_SRCE_98
+                , NVL(T1.ROLLOVERINDICATOR,0) AS ROLLOVERFLAG     --V8.01
+                , NVL(MO.MASTER_PROPERTY, MO.INSTALLEDPROPERTYNUMBER) INSTALLEDPROPERTYNUMBER    --*** v7.02 v9.12
+                , MO.MANUFCODE                  --*** v7.02
+                , MO.SPID_PK                    --V8.01
+                , NVL(MSP.SUPPLYPOINTEFFECTIVEFROMDATE, to_date('01/04/2016','dd/mm/yyyy')) SUPPLYPOINTEFFECTIVEFROMDATE  --*** V9.01
+                , 0 AS Record_Nr
+          FROM MO_METER MO
+              LEFT JOIN MO_SUPPLY_POINT MSP ON (MSP.SPID_PK = MO.SPID_PK)    --*** V9.01, V9.08
+          JOIN CIS.TVP195READING T195 ON
+              T195.NO_EQUIPMENT = MO.METERREF
+--                  AND T195.CD_COMPANY_SYSTEM = 'STW1'
+                  AND T195.TP_READING = 'M'
+                  AND T195.CD_MTR_RD_SRCE_98 IN ('N','W','L','P','C','U','H','O','F','G','S','X')   --*** V4.01 and V6.01
+                  AND T195.ST_READING_168 IN ('B')  -- V 9.11
+                  AND MONTHS_BETWEEN(SYSDATE, T195.TS_CAPTURED) <= 24
+                  AND T195.TS_CAPTURED >= MSP.SUPPLYPOINTEFFECTIVEFROMDATE --*** V9.01
+                  --AND T195.AM_READING > 0   --v9.11
+          --JOIN CIS.TVP063EQUIPMENT T063 ON (T063.NO_EQUIPMENT = MO.METERREF AND TRIM(T063.CD_COMPANY_SYSTEM) = 'STW1')    --V9.10
+          --JOIN CIS.TVP036LEGALENTITY T036 ON (T036.NO_LEGAL_ENTITY = T063.NO_BUSINESS)                                    --V9.10
+          LEFT JOIN BT_CLOCKOVER T1 ON (T1.STWMETERREF_PK = MO.METERREF AND T1.METERREADDATE = T195.TS_CAPTURED)
+          WHERE  MO.METERREF BETWEEN p_no_equipment_start AND p_no_equipment_end
+--         WHERE  MO.METERREF BETWEEN 1 AND 999999999
+--              AND MO.NONMARKETMETERFLAG = 0   --v9.07
+              AND MO.METERTREATMENT = 'POTABLE'  --V7.03
+          UNION
+          SELECT * FROM (
+              SELECT /*+ use_hash(mo t195) parallel(mo 6) parallel(t195 6)  */
+                  TRIM(MO.MANUFACTURER_PK) NM_PREFERRED
+                  , TRIM(MO.MANUFACTURERSERIALNUM_PK) NO_UTL_EQUIP
+                  , MO.METERREF NO_EQUIPMENT
+                  , T195.TS_CAPTURED
+                  , 'I' TP_READING
+                  , 0 ROLLOVERINDICATOR
+                  , 0 REREAD
+                  , TRIM(T195.AM_READING) AM_READING
+                  , 'H' CD_MTR_RD_SRCE_98
+                  , 0 AS ROLLOVERFLAG
+                  , NVL(MO.MASTER_PROPERTY, MO.INSTALLEDPROPERTYNUMBER) INSTALLEDPROPERTYNUMBER    --v9.12
+                  , MO.MANUFCODE              
+                  , MO.SPID_PK                
+                  , NVL(MSP.SUPPLYPOINTEFFECTIVEFROMDATE, to_date('01/04/2016','dd/mm/yyyy')) SUPPLYPOINTEFFECTIVEFROMDATE
+                  , ROW_NUMBER() OVER ( PARTITION BY MO.METERREF ORDER BY MO.METERREF, T195.TS_CAPTURED ASC NULLS FIRST) AS Record_Nr
+              FROM MO_METER MO
+                  LEFT JOIN MO_SUPPLY_POINT MSP ON (MSP.SPID_PK = MO.SPID_PK) --V9.08
+                  LEFT JOIN CIS.TVP195READING T195 ON (T195.NO_EQUIPMENT = MO.METERREF AND MONTHS_BETWEEN(SYSDATE, T195.TS_CAPTURED) > 24)
+              WHERE  MO.METERREF BETWEEN p_no_equipment_start AND p_no_equipment_end
+--              WHERE  MO.METERREF BETWEEN 1 AND 999999999
+--                  AND MO.NONMARKETMETERFLAG = 0   --v9.07
+                  AND MO.METERTREATMENT = 'POTABLE'
+          ) x
+          WHERE Record_Nr = 1
+      )
+      ORDER BY NO_EQUIPMENT, TS_CAPTURED ASC NULLS FIRST;
+      
 
 TYPE tab_meter IS TABLE OF cur_met%ROWTYPE INDEX BY PLS_INTEGER;
 t_met tab_meter;
@@ -133,6 +188,7 @@ BEGIN
    l_no_meter_read := 0;
    l_no_meter_written := 0;
    l_no_meter_dropped := 0;
+   l_prev_readdate := NULL;
 
    -- get job no
    P_MIG_BATCH.FN_STARTJOB(no_batch, no_job, c_module_name,
@@ -171,7 +227,7 @@ BEGIN
           L_ERR.TXT_KEY := t_met(I).NO_EQUIPMENT; -- modify
           L_MO := null;
           L_REC_EXC := false;
-          --L_REC_WAR := false;
+          L_REC_WAR := false;
 
           l_progress := 'CHECKING MANUFACTURER SERIALNUM IN METER TABLE';
           BEGIN
@@ -186,57 +242,88 @@ BEGIN
           END;
 
 -- CR01 - add recon counts for METERS
-          --GET METER READ COUNT
+          --IF DIFFERENT METER FROM PREVIOUS, UPDATE METER READ COUNT
           IF (l_prev_met <> t_met(i).NO_EQUIPMENT) THEN
               l_no_meter_read := l_no_meter_read + 1;
               l_curr_meter_written := FALSE;
+--*** V5.01 - WORKAROUND for NO ACTUAL readings              
+              IF t_met(i).TS_CAPTURED IS NULL THEN
+                  l_progress := 'NO READINGS FOR METER - DEFAULT IN VALUES';
+--                  BEGIN
+--                      L_PROGRESS := 'GETTING EARLIEST AVAILABLE READING';
+--                      SELECT TS_CAPTURED
+--                          , TP_READING
+--                          , AM_READING
+--                          , CD_MTR_RD_SRCE_98
+--                      INTO t_met(i).TS_CAPTURED
+--                          , t_met(i).TP_READING
+--                          , t_met(i).AM_READING
+--                          , t_met(i).CD_MTR_RD_SRCE_98
+--                      FROM
+--                          (SELECT TS_CAPTURED
+--                              , 'I' AS TP_READING            
+--                              , TRIM(AM_READING) AM_READING
+--                              , 'H' AS CD_MTR_RD_SRCE_98      --v 7.01
+--                          FROM  CIS.TVP195READING
+--                          WHERE  NO_EQUIPMENT = t_met(i).NO_EQUIPMENT
+--                          ORDER BY TS_CAPTURED DESC
+--                          )
+--                      WHERE rownum = 1;
+--                  EXCEPTION
+--                      WHEN NO_DATA_FOUND THEN
+                          t_met(i).TS_CAPTURED := t_met(i).SUPPLYPOINTEFFECTIVEFROMDATE;
+                          t_met(i).TP_READING := 'I';
+                          t_met(i).AM_READING := 0;
+                          t_met(i).CD_MTR_RD_SRCE_98 := 'H';
+--                  END;
+              ELSE
+                  --SET FIRST READ FOR METER AS INSTALL READ
+                  L_PROGRESS := 'DEFAULTING INSTALL METER READ';
+                  t_met(i).TP_READING := 'I';
+                  t_met(i).CD_MTR_RD_SRCE_98 := 'H';
+              END IF;
+              IF (t_met(i).SUPPLYPOINTEFFECTIVEFROMDATE > t_met(i).TS_CAPTURED) THEN
+                  t_met(i).TS_CAPTURED := t_met(i).SUPPLYPOINTEFFECTIVEFROMDATE;    --V9.01
+                  P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'W', SUBSTR('Warning - Initial Meter Read Date changed to SPID Effective Date',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
+                  L_NO_ROW_WAR := L_NO_ROW_WAR + 1;
+                  L_REC_WAR := TRUE;
+--v9.09 - interim workaround for future dates
+              ELSIF (t_met(i).TS_CAPTURED > SYSDATE) THEN
+                  t_met(i).TS_CAPTURED := SYSDATE;
+                  P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'W', SUBSTR('Warning - FUTURE Initial Meter Read Date changed to Current Date',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
+                  L_NO_ROW_WAR := L_NO_ROW_WAR + 1;
+                  L_REC_WAR := TRUE;
+--v9.09                  
+              END IF;
+              l_initialmeterreaddate := t_met(i).TS_CAPTURED;   --v9.03
+          ELSE
+              IF (t_met(i).SUPPLYPOINTEFFECTIVEFROMDATE > t_met(i).TS_CAPTURED) THEN
+                  t_met(i).TS_CAPTURED := t_met(i).SUPPLYPOINTEFFECTIVEFROMDATE;    --V9.01
+                  P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'W', SUBSTR('Warning - Meter Read Date changed to SPID Effective Date',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
+                  L_NO_ROW_WAR := L_NO_ROW_WAR + 1;
+                  L_REC_WAR := TRUE;
+--v9.09 - interim workaround for future dates
+              ELSIF (t_met(i).TS_CAPTURED > SYSDATE) THEN
+                  t_met(i).TS_CAPTURED := SYSDATE;
+                  P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'W', SUBSTR('Warning - FUTURE Meter Read Date changed to Current Date',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
+                  L_NO_ROW_WAR := L_NO_ROW_WAR + 1;
+                  L_REC_WAR := TRUE;
+--v9.09                  
+              END IF;
+              
+              --v9.05 - Check for duplicate METERREADDATES (DATE PART)
+              IF (l_prev_readdate = TO_CHAR(t_met(i).TS_CAPTURED, 'DD-MON-YYYY')) THEN
+                  P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('DUPLICATE METERREADDATE FOR METER',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
+                  L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
+                  L_REC_EXC := TRUE;
+              END IF;
           END IF;
 
           IF (l_prev_met <> t_met(i).NO_EQUIPMENT AND l_manufserialchk = 0) THEN
               P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('FK-Manufacturer and SerialNum not in MO_Meter',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
               L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
               L_REC_EXC := TRUE;
---*** V5.01 - WORKAROUND for NO ACTUAL readings              
           ELSE
-              IF t_met(i).TP_READING IS NULL THEN
-                  --l_progress := 'CHECKING FOR NO ACTUAL READINGS';
-                  BEGIN
-                      L_PROGRESS := 'GETTING EARLIEST AVAILABLE READING';
-                      SELECT TS_CAPTURED
-                          , TP_READING
-                          , AM_READING
-                          , CD_MTR_RD_SRCE_98
-                      INTO t_met(i).TS_CAPTURED
-                          , t_met(i).TP_READING
-                          , t_met(i).AM_READING
-                          , t_met(i).CD_MTR_RD_SRCE_98
-                      FROM
-                          (SELECT TS_CAPTURED
-                              , 'I' AS TP_READING            
-                              , TRIM(AM_READING) AM_READING
-                              , 'S' AS CD_MTR_RD_SRCE_98
-                          FROM  CIS.TVP195READING
-                          WHERE  NO_EQUIPMENT = t_met(i).NO_EQUIPMENT
-                          ORDER BY TS_CAPTURED
-                          )
-                      WHERE rownum = 1;
-                      IF t_met(i).TP_READING IS NULL THEN
-                          l_progress := 'NO READINGS FOR METER';
-                          L_MO.METERREADTYPE := '';
-                          P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('NO Readings against Meter',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
-                          L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
-                          L_REC_EXC := TRUE;
-                      END IF;
-                  END;
-              END IF;
-          --ELSIF t_met(i).TP_READING IS NULL THEN
-          --    l_progress := 'CHECKING FOR NO READINGS';
-          --    L_MO.METERREADTYPE := '';
-          --    P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('NO Billable Readings against Meter',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
-          --    L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
-          --    L_REC_EXC := TRUE;
-          --ELSE
---*** V5.01 - WORKAROUND
               l_progress := 'GETTING METERREADTYPE';
               --Mapping METERREADTYPE - D3010
               IF (t_met(i).TP_READING ='I') THEN
@@ -257,17 +344,24 @@ BEGIN
 
               l_progress := 'VALIDATING METERREAD';
               -- VALIDATION - METERREAD MUST BE GREATER THAN PREVIOUS UNLESS ROLLOVERINDICATOR = 1
-              -- *** N/A - handled by CLOCKOVER JOIN???
               IF (l_prev_met <> t_met(i).NO_EQUIPMENT) THEN
                   L_MO.METERREAD := t_met(i).AM_READING;   --NO_EQUIPMENT changed from prev, write reading
-              ELSIF (t_met(i).AM_READING >= l_prev_am_reading) THEN
+              ELSIF (t_met(i).AM_READING >= l_prev_am_reading) THEN   --V8.03
                   L_MO.METERREAD := t_met(i).AM_READING;   -- LATEST READING GREATER THEN PREVIOUS READING - WRITE READING
               ELSIF (t_met(i).ROLLOVERINDICATOR = 1) THEN
                   L_MO.METERREAD := t_met(i).AM_READING;   -- ROLLOVER - WRITE READING
+--**** V9.02 -- remove restriction  V8.03 Drop reading if SAME as previous
+              --ELSIF (t_met(i).AM_READING = l_prev_am_reading) THEN   
+              --    P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('Meter Read SAME as previous-Reading Dropped',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
+              --    L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
+              --    L_REC_EXC := TRUE;
+--*** V9.02 - V8.03
               ELSE
-                  P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('Invalid ROLLOVER Meter Read',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
-                  L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
-                  L_REC_EXC := TRUE;
+                  t_met(i).ROLLOVERINDICATOR := 1;
+                  L_MO.METERREAD := t_met(i).AM_READING;    --v9.06
+--                  P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'W', SUBSTR('WARN-Invalid ROLLOVER Meter Read',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
+--                  L_NO_ROW_WAR := L_NO_ROW_WAR + 1;
+--                  L_REC_WAR := TRUE;
               END IF;
               --L_MO.METERREAD := t_met(i).AM_READING;
 
@@ -286,6 +380,7 @@ BEGIN
                   WHEN t_met(i).CD_MTR_RD_SRCE_98 ='U' THEN L_MO.METERREADMETHOD := 'VISUAL';
                   WHEN t_met(i).CD_MTR_RD_SRCE_98 ='W' THEN L_MO.METERREADMETHOD := 'CUSTOMER';
                   WHEN t_met(i).CD_MTR_RD_SRCE_98 ='X' THEN L_MO.METERREADMETHOD := 'ESTIMATED';
+                  WHEN t_met(i).CD_MTR_RD_SRCE_98 ='O' THEN L_MO.METERREADMETHOD := 'VISUAL';       --*** v8.02 (2) - workaround for O (Service Order)
                   ELSE
                       P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('METERREADMETHOD NOT FOUND IN Mappings',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
                       L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
@@ -301,42 +396,37 @@ BEGIN
 
 --*** D_22 GETTING INITIALMETERREADDATE BASED ON EARLIEST METER READ
 --*** V3.01 Final rule Initial read date              
-              --BEGIN
-                  --l_progress := 'CHECKING I READS FOR INITIALMETERREADDATE';
-                  ----FIRST CHECK LATEST INSTALLATION READ
-                  --SELECT MAX(TS_CAPTURED)
-                  --INTO  L_MO.INITIALMETERREADDATE
-                  --FROM  CIS.TVP195READING
-                  --WHERE  NO_EQUIPMENT = t_met(i).NO_EQUIPMENT
-                  --AND TP_READING = 'I';
-
-                  --IF (L_MO.INITIALMETERREADDATE IS NULL) THEN
-                  --IF NO INSTALL METER READ FOUND GET EARLIEST READ
-                      BEGIN
+--*** V9.03 MOSL RULE - INITIALMETERREADDATE MUST BE SAME AS I TYPE (install) METER READ
+--                      BEGIN
                           L_PROGRESS := 'GETTING INITIALMETERREADDATE';
-                          SELECT MIN(TS_CAPTURED)
-                          INTO  L_MO.INITIALMETERREADDATE
-                          FROM  CIS.TVP195READING
-                          WHERE  NO_EQUIPMENT = t_met(i).NO_EQUIPMENT;
+--                          SELECT MIN(T195.TS_CAPTURED)
+--                          INTO  L_MO.INITIALMETERREADDATE
+--                          FROM  CIS.TVP195READING T195
+--                          WHERE  T195.NO_EQUIPMENT = t_met(i).NO_EQUIPMENT;
+--
+--                          IF (L_MO.INITIALMETERREADDATE IS NULL) THEN
+--                          --IF STILL NULL THEN NO READINGS FOUND, DROP METER
+--                              P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('No Initial Meter Read Date Found',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
+--                              L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
+--                              L_REC_EXC := true;
+--                          ELSIF (t_met(i).SUPPLYPOINTEFFECTIVEFROMDATE > L_MO.INITIALMETERREADDATE) THEN
+--                              l_progress := 'Initial Meter Read Date set to SPID Date';
+--                              L_MO.INITIALMETERREADDATE := t_met(i).SUPPLYPOINTEFFECTIVEFROMDATE;                          
+--                              P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'W', SUBSTR('Warning - Initial Meter Read Date changed to SPID Effective Date',1,100),  L_ERR.TXT_KEY, SUBSTR(l_ERR.TXT_DATA || ',' || l_progress,1,100));
+--                              L_NO_ROW_WAR := L_NO_ROW_WAR + 1;
+--                              L_REC_WAR := TRUE;
+--                          END IF;
+--                      END;
+                L_MO.INITIALMETERREADDATE := l_initialmeterreaddate;
 
-                          IF (L_MO.INITIALMETERREADDATE IS NULL) THEN
-                          --IF STILL NULL THEN NO READINGS FOUND, DROP METER
-                              P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'X', SUBSTR('No Initial Meter Read Date Found',1,100),  L_ERR.TXT_KEY, SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100));
-                            L_NO_ROW_EXP := L_NO_ROW_EXP + 1;
-                            L_REC_EXC := true;
-                          END IF;
-                      END;
-                  --END IF;
-              --END;
---*** V3.01
---*** D_22
           END IF;
 
 
           IF  L_REC_EXC = TRUE THEN  --using this if statement to pick up data that passes the biz rules into the table otherwise they will be dropped and would have be sent into the exception table
               IF (   l_no_row_exp > l_job.EXP_TOLERANCE
                      OR l_no_row_err > l_job.ERR_TOLERANCE
-                     OR l_no_row_war > l_job.WAR_TOLERANCE)
+                     OR l_no_row_war > l_job.WAR_TOLERANCE
+                     )
               THEN
                   CLOSE cur_met;
                   L_JOB.IND_STATUS := 'ERR';
@@ -348,31 +438,34 @@ BEGIN
               END IF;
               L_REC_WRITTEN := FALSE;
           ELSE
---              IF (L_REC_WAR = true AND l_no_row_war > l_job.WAR_TOLERANCE) THEN
---                  CLOSE cur_met;
---                  L_JOB.IND_STATUS := 'ERR';
---                  P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', 'Warning tolerance level exceeded- Dropping bad data',  l_err.TXT_KEY, substr(l_ERR.TXT_DATA || ',' || l_progress,1,100));
---                  P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
---                  commit;
---                  return_code := -1;
---                  return;
---              END IF;
+              IF (L_REC_WAR = true AND l_no_row_war > l_job.WAR_TOLERANCE) THEN
+                  CLOSE cur_met;
+                  L_JOB.IND_STATUS := 'ERR';
+                  P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', 'Warning tolerance level exceeded- Dropping bad data',  l_err.TXT_KEY, substr(l_ERR.TXT_DATA || ',' || l_progress,1,100));
+                  P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
+                  commit;
+                  return_code := -1;
+                  return;
+              END IF;
               L_REC_WRITTEN := TRUE;
+              --DBMS_OUTPUT.PUT_LINE('INSERT');
               l_progress := 'loop processing ABOUT TO INSERT INTO TABLE';
               BEGIN
                   INSERT INTO MO_METER_READING
                   (MANUFACTURER_PK, MANUFACTURERSERIALNUM_PK, METERREF, METERREADDATE, METERREADTYPE, ROLLOVERINDICATOR, REREADFLAG
                   , METERREAD, METERREADMETHOD, ESTIMATEDREADREASONCODE, ROLLOVERFLAG, ESTIMATEDREADREMEDIALWORKIND, INITIALMETERREADDATE
                   , METRREADDATEFORREMOVAL, RDAOUTCOME, METERREADSTATUS, METERREADERASEDFLAG, METERREADREASONTYPE, METERREADSETTLEMENTFLAG, PREVVALCDVCANDIDATEDAILYVOLUME
+                  , INSTALLEDPROPERTYNUMBER, MANUFCODE  --*** v7.02
                   )
               VALUES
                   (t_met(i).NM_PREFERRED, t_met(i).NO_UTL_EQUIP, t_met(i).NO_EQUIPMENT, t_met(i).TS_CAPTURED, L_MO.METERREADTYPE, t_met(i).ROLLOVERINDICATOR, L_MO.REREADFLAG
                   , L_MO.METERREAD, L_MO.METERREADMETHOD, L_MO.ESTIMATEDREADREASONCODE, t_met(i).ROLLOVERFLAG, L_MO.ESTIMATEDREADREMEDIALWORKIND, L_MO.INITIALMETERREADDATE
                   , NULL, NULL, NULL, NULL, NULL, NULL, NULL
+                  , t_met(i).INSTALLEDPROPERTYNUMBER, t_met(i).MANUFCODE  --*** v7.02
                   );
               EXCEPTION
               WHEN OTHERS THEN
-                 L_NO_ROW_DROPPED := L_NO_ROW_DROPPED + 1;
+                 --L_NO_ROW_DROPPED := L_NO_ROW_DROPPED + 1;
                  l_rec_written := FALSE;
                  l_error_number := SQLCODE;
                  l_error_message := SQLERRM;
@@ -383,7 +476,8 @@ BEGIN
                  -- if tolearance limit has een exceeded, set error message and exit out
                  IF (   l_no_row_exp > l_job.EXP_TOLERANCE
                      OR l_no_row_err > l_job.ERR_TOLERANCE
-                     OR l_no_row_war > l_job.WAR_TOLERANCE)
+                     OR l_no_row_war > l_job.WAR_TOLERANCE
+                     )
                  THEN
                      CLOSE cur_met;
                      L_JOB.IND_STATUS := 'ERR';
@@ -403,6 +497,8 @@ BEGIN
               IF (l_prev_met <> t_met(i).NO_EQUIPMENT) THEN
                   l_no_meter_written := l_no_meter_written + 1;
               END IF;
+              l_prev_am_reading := t_met(i).AM_READING;
+              l_prev_readdate := TO_CHAR(t_met(i).TS_CAPTURED, 'DD-MON-YYYY');
           ELSE
               L_NO_ROW_DROPPED := L_NO_ROW_DROPPED + 1;
               IF (l_prev_met <> t_met(i).NO_EQUIPMENT AND l_curr_meter_written = FALSE) THEN
@@ -410,7 +506,6 @@ BEGIN
               END IF;
           END IF;
           l_prev_met := t_met(i).NO_EQUIPMENT;
-          l_prev_am_reading := t_met(i).AM_READING;
 
       END LOOP;
 
@@ -452,6 +547,7 @@ BEGIN
 
 EXCEPTION
 WHEN OTHERS THEN
+      --DBMS_OUTPUT.PUT_LINE(L_MO.METERREAD);
       L_ERROR_NUMBER := SQLCODE;
       L_ERROR_MESSAGE := SUBSTR(SQLERRM,1,512);
       P_MIG_BATCH.FN_ERRORLOG(NO_BATCH, L_JOB.NO_INSTANCE, 'E', SUBSTR(L_ERROR_MESSAGE,1,100),  L_ERR.TXT_KEY,  SUBSTR(L_ERR.TXT_DATA || ',' || l_progress,1,100));

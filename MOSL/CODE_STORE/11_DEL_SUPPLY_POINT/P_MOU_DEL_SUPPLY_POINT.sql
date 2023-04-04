@@ -9,7 +9,7 @@ PROCEDURE P_MOU_DEL_SUPPLY_POINT(no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
 --
 -- FILENAME       : P_MOU_DEL_SUPPLY_POINT.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 5440 $
 --
 -- CREATED        : 07/04/2016
 --
@@ -31,6 +31,10 @@ PROCEDURE P_MOU_DEL_SUPPLY_POINT(no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
 --                                    Output format change to RATEABLEVALUE (Defect 15)
 -- V 1.01      13/05/2016  K.Burton   Changes to file write logic to accomodate cross border
 --                                    files
+-- V 1.02      16/08/2916  K.Burton   SAP Defect 124 - SIC codes need to be 5 characters for SAP 
+--                                    - left pad with leading 0's where required.
+-- V 1.03      25/08/2016  S.Badhan   I-320. If user FINDEL use directory FINEXPORT.
+-- V 1.04      01/09/2016  K.Burton   Updates for splitting STW data into 3 batches
 -----------------------------------------------------------------------------------------
 
   c_module_name                 CONSTANT VARCHAR2(30) := 'P_MOU_DEL_SUPPLY_POINT';
@@ -57,7 +61,6 @@ PROCEDURE P_MOU_DEL_SUPPLY_POINT(no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
   l_tablename VARCHAR2(100) := 'DEL_SUPPLY_POINT';
 
   l_sql VARCHAR2(2000);
---  fHandle UTL_FILE.FILE_TYPE;
   
   -- Cross Border Control cursor
   CURSOR cb_cur IS
@@ -85,7 +88,8 @@ PROCEDURE P_MOU_DEL_SUPPLY_POINT(no_batch IN MIG_BATCHSTATUS.NO_BATCH%TYPE,
            MEP.PUBHEALTHRELSITEARR,
            MEP.NONPUBHEALTHRELSITE,
            MEP.NONPUBHEALTHRELSITEDSC,  -- Must be populated if NONPUBHEALTHRELSITE = 1
-           MC.STDINDUSTRYCLASSCODE,
+--           MC.STDINDUSTRYCLASSCODE,
+           TO_CHAR(MC.STDINDUSTRYCLASSCODE,'00000') STDINDUSTRYCLASSCODE,  -- V 1.02 
            MC.STDINDUSTRYCLASSCODETYPE,  -- Must be populated if STDINDUSTRYCLASSCODE is not NULL
            MEP.RATEABLEVALUE,
            MEP.OCCUPENCYSTATUS,
@@ -153,6 +157,11 @@ BEGIN
    l_no_row_exp := 0;
    l_job.IND_STATUS := 'RUN';
 
+   IF USER = 'FINDEL' THEN
+      l_filepath := 'FINEXPORT';
+   END IF;
+
+
    -- get job no and start job
    P_MIG_BATCH.FN_STARTJOB(no_batch, no_job, c_module_name,
                          l_job.NO_INSTANCE,
@@ -196,6 +205,7 @@ BEGIN
           -- write the data to the delivery table
           l_progress := 'insert row into DEL_SUPPLY_POINT ';
           INSERT INTO DEL_SUPPLY_POINT VALUES t_supply_point(i);
+          COMMIT;
         EXCEPTION
         WHEN OTHERS THEN
              l_no_row_dropped := l_no_row_dropped + 1;
@@ -226,83 +236,6 @@ BEGIN
         -- keep count of records written
         IF l_rec_written THEN
            l_no_row_insert := l_no_row_insert + 1;
-
---          BEGIN
---            l_progress := 'write row export file ';
---
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).SPID_PK) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).WHOLESALERID) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).RETAILERID) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).SERVICECATEGORY) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(TO_CHAR(t_supply_point(i).SUPPLYPOINTEFFECTIVEFROMDATE,'YYYY-MM-DD')) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).PAIRINGREFREASONCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).OTHERWHOLESALERID) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).MULTIPLEWHOLESALERFLAG) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).DISCONRECONDEREGSTATUS) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).VOABAREFERENCE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).VOABAREFRSNCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).UPRN) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).UPRNREASONCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).CUSTOMERCLASSIFICATION) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).PUBHEALTHRELSITEARR) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).NONPUBHEALTHRELSITE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).NONPUBHEALTHRELSITEDSC) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).STDINDUSTRYCLASSCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).STDINDUSTRYCLASSCODETYPE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(TO_CHAR(t_supply_point(i).RATEABLEVALUE,'00000000.99')) || '|'); -- V0.04 - Defect 15
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).OCCUPENCYSTATUS) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).BUILDINGWATERSTATUS) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).LANDLORDSPID) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).SECTION154) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).CUSTOMERNAME) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).CUSTOMERBANNERNAME) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).PREMLOCATIONFREETEXTDESCRIPTOR) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).PREMSECONDADDRESABLEOBJECT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).PREMPRIMARYADDRESSABLEOBJECT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).PREMADDRESSLINE01) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).PREMADDRESSLINE02) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).PREMADDRESSLINE03) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).PREMADDRESSLINE04) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).PREMADDRESSLINE05) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).PREMPOSTCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).PREMPAFADDRESSKEY) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).CUSTLOCATIONFREETEXTDESCRIPTOR) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).CUSTSECONDADDRESABLEOBJECT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).CUSTPRIMARYADDRESSABLEOBJECT) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).CUSADDRESSLINE01) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).CUSADDRESSLINE02) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).CUSADDRESSLINE03) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).CUSADDRESSLINE04) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).CUSADDRESSLINE05) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).CUSTPOSTCODE) || '|');
---            UTL_FILE.PUT(fHandle,TRIM(t_supply_point(i).CUSTCOUNTRY) || '|');
---            UTL_FILE.PUT_LINE(fHandle,TRIM(t_supply_point(i).CUSTPAFADDRESSKEY));
---
---          EXCEPTION
---            WHEN OTHERS THEN
---                 l_rec_written := FALSE;
---                 l_error_number := SQLCODE;
---                 l_error_message := SQLERRM;
---
---                 P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', substr(l_error_message,1,100),  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
---                 l_no_row_exp := l_no_row_exp + 1;
---
---                 -- if tolearance limit has een exceeded, set error message and exit out
---                 IF (   l_no_row_exp > l_job.EXP_TOLERANCE
---                     OR l_no_row_err > l_job.ERR_TOLERANCE
---                     OR l_no_row_war > l_job.WAR_TOLERANCE)
---                 THEN
---                     CLOSE cur_supply_point;
---                     l_job.IND_STATUS := 'ERR';
---                     P_MIG_BATCH.FN_ERRORLOG(no_batch, l_job.NO_INSTANCE, 'E', 'Error tolerance level exceeded',  l_err.TXT_KEY, substr(l_err.TXT_DATA || ',' || l_progress,1,100));
---                     P_MIG_BATCH.FN_UPDATEJOB(no_batch, l_job.NO_INSTANCE, l_job.IND_STATUS);
---                     COMMIT;
---                  END IF;
---          END;
---
---          IF l_rec_written THEN
---             l_no_row_written := l_no_row_written + 1;
---          END IF;
         END IF;
 
     END LOOP;
@@ -312,57 +245,42 @@ BEGIN
     CASE w.WHOLESALER_ID 
       WHEN 'ANGLIAN-W' THEN
         l_sql := 'SELECT * FROM DEL_SUPPLY_POINT_ANW_V';
-        l_filename := 'SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_SUPPLY_POINT_ANW_V;
-        END IF;
       WHEN 'DWRCYMRU-W' THEN
         l_sql := 'SELECT * FROM DEL_SUPPLY_POINT_WEL_V';
-        l_filename := 'SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_SUPPLY_POINT_WEL_V;
-        END IF;
       WHEN 'SEVERN-W' THEN
         l_sql := 'SELECT * FROM DEL_SUPPLY_POINT_STW_V';
-        l_filename := 'SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_SUPPLY_POINT_STW_V;
-        END IF;
+      WHEN 'SEVERN-A' THEN
+        l_sql := 'SELECT * FROM DEL_SUPPLY_POINT_STWA_V';
+      WHEN 'SEVERN-B' THEN
+        l_sql := 'SELECT * FROM DEL_SUPPLY_POINT_STWB_V';
       WHEN 'THAMES-W' THEN
         l_sql := 'SELECT * FROM DEL_SUPPLY_POINT_THW_V';
-        l_filename := 'SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_SUPPLY_POINT_THW_V;
-        END IF;
       WHEN 'WESSEX-W' THEN
         l_sql := 'SELECT * FROM DEL_SUPPLY_POINT_WEW_V';
-        l_filename := 'SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_SUPPLY_POINT_WEW_V;
-        END IF;
       WHEN 'YORKSHIRE-W' THEN
         l_sql := 'SELECT * FROM DEL_SUPPLY_POINT_YOW_V';
-        l_filename := 'SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_SUPPLY_POINT_YOW_V;
-        END IF;
       WHEN 'UNITED-W' THEN
         l_sql := 'SELECT * FROM DEL_SUPPLY_POINT_UUW_V';
-        l_filename := 'SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_SUPPLY_POINT_UUW_V;
-        END IF;
       WHEN 'SOUTHSTAFF-W' THEN
         l_sql := 'SELECT * FROM DEL_SUPPLY_POINT_SSW_V';
-        l_filename := 'SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
-        IF w.RUN_FLAG = 0 THEN
-          SELECT COUNT(*) INTO l_count FROM DEL_SUPPLY_POINT_SSW_V;
-        END IF;
     END CASE;
     IF w.RUN_FLAG = 1 THEN
+      l_filename := 'SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
       P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
       l_no_row_written := l_no_row_written + l_rows_written; -- add rows written to total
+
+      IF w.WHOLESALER_ID NOT LIKE 'SEVERN%' THEN
+        l_filename := 'OWC_SUPPLY_POINT_' || w.WHOLESALER_ID || '_' || TO_CHAR(SYSDATE,'YYMMDDHH24MI') || '.dat';
+        l_sql := 'SELECT  STW.*,MSP.SPID_PK SPID_S 
+                  FROM DEL_SUPPLY_POINT_STW_V STW, MOUTRAN.MO_SUPPLY_POINT MSP 
+                  WHERE STW.OTHERWHOLESALERID = ''' || w.WHOLESALER_ID || ''' 
+                  AND SUBSTR(STW.SPID_PK,0,10) = MSP.CORESPID_PK 
+                  AND MSP.SERVICECATEGORY = ''S''';
+        P_DEL_UTIL_WRITE_FILE(l_sql,l_filepath,l_filename,l_rows_written);
+      END IF;
     ELSE
+      l_sql := 'SELECT COUNT(*) FROM DEL_SUPPLY_POINT WHERE WHOLESALERID = :wholesaler';
+      EXECUTE IMMEDIATE l_sql INTO l_count USING w.WHOLESALER_ID;
       l_no_row_dropped_cb := l_no_row_dropped_cb + l_count;
     END IF;
   END LOOP;
@@ -376,7 +294,6 @@ BEGIN
   END LOOP;
 
   CLOSE cur_supply_point;
---  UTL_FILE.FCLOSE(fHandle);
 
   -- archive the latest batch
   P_DEL_UTIL_ARCHIVE_TABLE(p_tablename => l_tablename,

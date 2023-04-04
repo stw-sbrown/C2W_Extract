@@ -6,7 +6,7 @@
 -- FILENAME       		: 	P00022.sql
 --
 --
--- Subversion $Revision: 4023 $	
+-- Subversion $Revision: 5831 $	
 --
 -- CREATED        		: 	21/03/2016
 --	
@@ -21,13 +21,14 @@
 --
 ---------------------------- Modification History ----------------------------------------------------------
 --
--- Version     		Date            Author         	Description
--- ---------      	----------      -------         ------------------------------------------------
+-- Version     		Date            Author       Description
+-- ---------      ----------      -------      ------------------------------------------------------------
+-- V0.02       		13/10/2016      S.Badhan     Remove drop of FK_SERVICECOMPONENTREF_PK01, does not exist
 -- V0.01       		21/04/2016      M.Marron     Initial version 
  
 ------------------------------------------------------------------------------------------------------------
 --DROP CONSTRAINT FK_SERVICECOMPONENTREF_PK01
-ALTER TABLE MO_SERVICE_COMPONENT DROP CONSTRAINT FK_SERVICECOMPONENTREF_PK01;
+--ALTER TABLE MO_SERVICE_COMPONENT DROP CONSTRAINT FK_SERVICECOMPONENTREF_PK01;
 COMMENT ON COLUMN MO_SERVICE_COMPONENT.METEREDFSMAXDAILYDEMAND IS 'Maximum Daily Demand~~~D2079 - Maximum daily demand in m3 for a Metered Service Component, for maximum demand tariffs';
 commit;
 exit;

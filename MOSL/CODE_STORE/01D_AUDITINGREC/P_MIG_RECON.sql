@@ -8,7 +8,7 @@ IS
 --
 -- FILENAME       : P_MIG_RECON.sql
 --
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 6477 $
 --
 -- CREATED        : 08/04/2016
 --
@@ -31,6 +31,14 @@ IS
 --
 -- Lee Smith         15/04/2016    Table ELIGIBILITY_CONTROL_TABLE is now in the CIS Schema
 -- Lee Smith         19/05/2016    Remove reference to moutran
+-- Lee Smith         04/07/2016    I-269 Non market meters to be counted as 'Non eligible'
+-- S.Badhan          05/07/2016    Call FN_RECONLOG with new counter l_prop_nonelig_count_nmm
+-- Lee Smith         06/07/2016    I-275 Upper case check on cd_property_use_fut
+-- Lee Smith         07/07/2016    Changes to reflect the keygen amendments
+-- Kevin Burton      15/09/2016    Changes to CP21 output to work around limit violations resulting from phased delivery
+--                                 changed in keygen
+-- K.Burton          05/12/2016    Changes to check on fg_mecoms_rdy flag to include phase 4
+-- D.Cheung          07/12/2016    Changes to check on fg_mecoms_rdy flag to include 8 and 9
 --
 -- DESCRIPTION    : Data load reconciliation.
 -- NOTES  :
@@ -81,14 +89,18 @@ IS
   l_prop_nonelig_count_e        NUMBER:=0;
   l_prop_nonelig_count_h        NUMBER:=0;
   l_prop_nonelig_count_x        NUMBER:=0;
+  l_prop_nonelig_count_others   NUMBER:=0;
   l_prop_nonelig_total          NUMBER:=0;
   l_prop_elig_count_c           NUMBER:=0;
   l_prop_elig_count_i           NUMBER:=0;
   l_prop_elig_count_m           NUMBER:=0;
   l_prop_elig_count_n           NUMBER:=0;
+  l_prop_elig_count_others      NUMBER:=0;
   l_prop_elig_total             NUMBER:=0;
   l_distinct_prop_tvmnhhdtl     NUMBER:=0;
   l_distinct_prop_bt_tvp054     NUMBER:=0;
+  l_prop_eligible_dropped       NUMBER:=0;
+  l_prop_bt_tvp054_dropped      NUMBER:=0;
 
 
 -- INDEXED BY TABLE
@@ -400,28 +412,56 @@ t_mig_tables  tab_mig_tables;
 
 
 -- ROW COUNTS OF NON ELIGIBLE PROPERTIES BY USE CODE
+-- No Longer required as test is now based on fg_mecoms_rdy not in 1,2,3
 CURSOR cur_prop_noneligible
     IS
     SELECT COUNT(*) noneligibility_count, 
-           cd_property_use_fut
+           UPPER(cd_property_use_fut) cd_property_use_fut
       FROM cis.eligibility_control_table
-     WHERE cd_property_use_fut IN ('X','H','E','D')
+     WHERE UPPER(cd_property_use_fut) IN ('X','H','E','D')
      GROUP BY cd_property_use_fut
      ORDER BY cd_property_use_fut;
 TYPE tab_prop_noneligible IS TABLE OF cur_prop_noneligible%ROWTYPE INDEX BY PLS_INTEGER;
 t_prop_noneligible  tab_prop_noneligible;
 
 -- ROW COUNTS OF ELIGIBLE PROPERTIES BY USE CODE
+-- No Longer required as test is now based on fg_mecoms_rdy in 1,2,3
 CURSOR cur_prop_eligible
     IS
     SELECT COUNT(*) eligibility_count, 
-           cd_property_use_fut
+           UPPER(cd_property_use_fut) cd_property_use_fut
       FROM cis.eligibility_control_table
-     WHERE cd_property_use_fut IN ('N','M','I','C')
+     WHERE UPPER(cd_property_use_fut) IN ('N','M','I','C')
+        OR fg_nmm = 'Y'
      GROUP BY cd_property_use_fut
      ORDER BY cd_property_use_fut;
 TYPE tab_prop_eligible IS TABLE OF cur_prop_eligible%ROWTYPE INDEX BY PLS_INTEGER;
 t_prop_eligible  tab_prop_eligible;
+
+CURSOR cur_prop_eligible_dropped  -- Eligible rows filtered/dropped
+    IS 
+SELECT DISTINCT no_property
+  FROM CIS.eligibility_control_table
+ MINUS
+(SELECT DISTINCT no_property
+   FROM tvmnhhdtl
+  UNION
+  SELECT DISTINCT no_property
+    FROM cis.eligibility_control_table
+   WHERE fg_mecoms_rdy NOT IN ('1','2','3','4','8','9')
+         OR cd_company_system != 'STW1');
+TYPE tab_prop_eligible_dropped IS TABLE OF cur_prop_eligible_dropped%ROWTYPE INDEX BY PLS_INTEGER;
+t_prop_eligible_dropped  tab_prop_eligible_dropped;
+
+CURSOR cur_prop_bt_tvp054_dropped
+    IS
+SELECT DISTINCT no_property
+  FROM tvmnhhdtl
+  MINUS
+SELECT DISTINCT no_property
+  FROM bt_tvp054;
+TYPE tab_prop_bt_tvp054_dropped IS TABLE OF cur_prop_bt_tvp054_dropped%ROWTYPE INDEX BY PLS_INTEGER;
+t_prop_bt_tvp054_dropped  tab_prop_bt_tvp054_dropped;
 
 
 BEGIN
@@ -933,13 +973,25 @@ BEGIN
  
 
   l_progress := 'loop processing non eligible property use codes (Future) ';
+  SELECT COUNT(*)
+    INTO l_prop_nonelig_total
+    FROM cis.eligibility_control_table
+   WHERE fg_mecoms_rdy NOT IN ('1','2','3','4','8','9')
+         OR cd_company_system != 'STW1';
 
-  OPEN cur_prop_noneligible;
-
-  LOOP
+  P_MIG_BATCH.FN_RECONLOG(no_batch,                                                                                      -- Batch number
+                          l_job.NO_INSTANCE,                                                                             -- Job number
+                          'CP16',                                                                                            -- Control Point
+                          505,                                                                                           -- Measure number
+                          l_prop_nonelig_total,                                                                          -- Data to be recorded
+                          'Eligibility Control Table - Count of Non Eligible Properties by Property Use Code (Total) '); -- Description
+  l_TotalInserted := l_TotalInserted + 1;
   
+/*
+  OPEN cur_prop_noneligible;
+  LOOP
     FETCH cur_prop_noneligible BULK COLLECT INTO t_prop_noneligible LIMIT 99999999;   -- l_job.NO_COMMIT;
- 
+
     FOR i IN 1..t_prop_noneligible.COUNT
     LOOP
     
@@ -955,11 +1007,10 @@ BEGIN
             l_prop_nonelig_count_h := t_prop_noneligible(i).noneligibility_count;
          ELSIF t_prop_noneligible(i).cd_property_use_fut = 'X' THEN
             l_prop_nonelig_count_x := t_prop_noneligible(i).noneligibility_count;
+         ELSE
+            l_prop_nonelig_count_others := t_prop_noneligible(i).noneligibility_count;
          END IF;
-
-     
       END IF;
-      
     END LOOP;
 
     IF t_prop_noneligible.COUNT < 999999 THEN --l_job.NO_COMMIT THEN
@@ -974,7 +1025,8 @@ BEGIN
   l_prop_nonelig_total := l_prop_nonelig_count_d +
                           l_prop_nonelig_count_e +
                           l_prop_nonelig_count_h +
-                          l_prop_nonelig_count_x;
+                          l_prop_nonelig_count_x +
+                          l_prop_nonelig_count_others;
 --DBMS_OUTPUT.PUT_LINE('Non eligible totel = ' || TO_CHAR(l_prop_nonelig_total));
 
   l_progress := 'load non eligible log entries ';
@@ -1016,17 +1068,37 @@ BEGIN
                           l_job.NO_INSTANCE,                                                                             -- Job number
                           'CP16',                                                                                            -- Control Point
                           504,                                                                                           -- Measure number
+                          l_prop_nonelig_count_others,                                                                          -- Data to be recorded
+                          'Eligibility Control Table - Count of Non Eligible Properties by Property Use Code (Others) '); -- Description
+  l_TotalInserted := l_TotalInserted + 1;
+
+  P_MIG_BATCH.FN_RECONLOG(no_batch,                                                                                      -- Batch number
+                          l_job.NO_INSTANCE,                                                                             -- Job number
+                          'CP16',                                                                                            -- Control Point
+                          505,                                                                                           -- Measure number
                           l_prop_nonelig_total,                                                                          -- Data to be recorded
                           'Eligibility Control Table - Count of Non Eligible Properties by Property Use Code (Total) '); -- Description
   l_TotalInserted := l_TotalInserted + 1;
+*/
 
+  l_progress := 'loop processing eligible properties ';
+  SELECT COUNT(*)
+    INTO l_prop_elig_total
+    FROM cis.eligibility_control_table
+   WHERE fg_mecoms_rdy IN ('1','2','3','4','8','9')
+         AND cd_company_system = 'STW1';
+         
+  P_MIG_BATCH.FN_RECONLOG(no_batch,                                                                                      -- Batch number
+                          l_job.NO_INSTANCE,                                                                             -- Job number
+                          'CP17',                                                                                        -- Control Point
+                          515,                                                                                           -- Measure number
+                          l_prop_elig_total,                                                                             -- Data to be recorded
+                          'Eligibility Control Table - Count of Eligible Properties by Property Use Code (Total) '); -- Description
+  l_TotalInserted := l_TotalInserted + 1;
 
-
-  l_progress := 'loop processing eligible property use codes (Future) ';
+/*
   OPEN cur_prop_eligible;
-
   LOOP
-  
     FETCH cur_prop_eligible BULK COLLECT INTO t_prop_eligible LIMIT 99999999;   -- l_job.NO_COMMIT;
  
     FOR i IN 1..t_prop_eligible.COUNT
@@ -1044,9 +1116,9 @@ BEGIN
             l_prop_elig_count_i := t_prop_eligible(i).eligibility_count;
          ELSIF t_prop_eligible(i).cd_property_use_fut = 'C' THEN
             l_prop_elig_count_c := t_prop_eligible(i).eligibility_count;
+         ELSE
+            l_prop_elig_count_others := t_prop_eligible(i).eligibility_count;
          END IF;
-
-     
       END IF;
       
     END LOOP;
@@ -1063,7 +1135,8 @@ BEGIN
   l_prop_elig_total := l_prop_elig_count_n +
                        l_prop_elig_count_m +
                        l_prop_elig_count_i +
-                       l_prop_elig_count_c;
+                       l_prop_elig_count_c +
+                       l_prop_elig_count_others;
 --DBMS_OUTPUT.PUT_LINE('Eligible totel = ' || TO_CHAR(l_prop_elig_total));
 
 
@@ -1105,10 +1178,17 @@ BEGIN
                           'CP17',                                                                                          -- Control Point
                           514,                                                                                         -- Measure number
                           l_prop_elig_total,                                                                           -- Data to be recorded
-                          'Eligibility Control Table - Count of Eligible Properties by Property Use Code (Total) ');   -- Description
+                          'Eligibility Control Table - Count of Eligible Properties by Property Use Code (Others) ');   -- Description
   l_TotalInserted := l_TotalInserted + 1;
 
-
+  P_MIG_BATCH.FN_RECONLOG(no_batch,                                                                                      -- Batch number
+                          l_job.NO_INSTANCE,                                                                             -- Job number
+                          'CP17',                                                                                            -- Control Point
+                          515,                                                                                           -- Measure number
+                          l_prop_nonelig_total,                                                                          -- Data to be recorded
+                          'Eligibility Control Table - Count of Eligible Properties by Property Use Code (Total) '); -- Description
+  l_TotalInserted := l_TotalInserted + 1;
+*/
 
   l_progress := 'Load count of Properties on TVMNHHDTL (Key_GEN Stage 1)';
   SELECT COUNT(DISTINCT no_property)
@@ -1120,15 +1200,48 @@ BEGIN
                           l_job.NO_INSTANCE,                                                                             -- Job number
                           'CP18',                                                                                            -- Control Point
                           630,                                                                                           -- Measure number
-                          l_prop_nonelig_count_x,                                                                        -- Data to be recorded
+                          l_distinct_prop_tvmnhhdtl,                                                                        -- Data to be recorded
                           'Distinct count of Properties loaded on TVMNHHDTL (Key_GEN Stage 1)');                         -- Description
   l_TotalInserted := l_TotalInserted + 1;
+  
+  l_progress := 'Properties dropped/filtered from load (Key_GEN Stage 1)';
+   OPEN cur_prop_eligible_dropped;
 
+  LOOP
+  
+    FETCH cur_prop_eligible_dropped BULK COLLECT INTO t_prop_eligible_dropped LIMIT 99999999;   -- l_job.NO_COMMIT;
+ 
+    FOR i IN 1..t_prop_eligible_dropped.COUNT
+    LOOP
+    
+      l_err.TXT_KEY := t_prop_eligible_dropped(i).no_property;
+      l_mo := NULL;
+      l_prop_eligible_dropped := l_prop_eligible_dropped + 1;
+      
+      P_MIG_BATCH.FN_ERRORLOG(NO_BATCH,                                                                                  -- Batch number
+                              L_JOB.NO_INSTANCE,                                                                         -- Job number
+                              'X',                                                                                       -- log
+                              SUBSTR('CP19 Properties dropped/filtered',1,100),                                          -- error
+                              L_ERR.TXT_KEY,                                                                             -- key
+                              SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100)                                          -- data
+                             );
+
+    END LOOP;
+
+    IF t_prop_eligible_dropped.COUNT < 999999 THEN --l_job.NO_COMMIT THEN
+       EXIT;
+    ELSE
+       COMMIT;
+    END IF;
+     
+  END LOOP;
+  CLOSE cur_prop_eligible_dropped;
+ 
   P_MIG_BATCH.FN_RECONLOG(no_batch,                                                                                      -- Batch number
                           l_job.NO_INSTANCE,                                                                             -- Job number
                           'CP19',                                                                                            -- Control Point
                           620,                                                                                           -- Measure number
-                          0,             -- Zero as loaded from a select statement                                       -- Data to be recorded Z
+                          l_prop_eligible_dropped,             -- Dropped/Filtered by proc 1_create_tvmnhhdtl_from_elig  -- Data to be recorded
                           'Distinct count of Properties dropped from load TVMNHHDTL (Key_GEN Stage 1)');                 -- Description
   l_TotalInserted := l_TotalInserted + 1;
 
@@ -1141,7 +1254,6 @@ BEGIN
     INTO l_distinct_prop_bt_tvp054
     FROM bt_tvp054;
 
-
   P_MIG_BATCH.FN_RECONLOG(no_batch,                                                                                      -- Batch number
                           l_job.NO_INSTANCE,                                                                             -- Job number
                           'CP20',                                                                                            -- Control Point
@@ -1150,11 +1262,51 @@ BEGIN
                           'Distinct count of Properties loaded on BT_TVP054 (Key_GEN Stage 1)');                         -- Description
   l_TotalInserted := l_TotalInserted + 1;
 
+
+  l_progress := 'Properties dropped/filtered from load (BT_TVP054)';
+
+  SELECT COUNT(*) INTO l_prop_bt_tvp054_dropped
+  FROM (SELECT DISTINCT no_property FROM tvmnhhdtl
+        MINUS
+        SELECT DISTINCT no_property FROM bt_tvp054);
+--   OPEN cur_prop_bt_tvp054_dropped;
+--
+--  LOOP
+--  
+--    FETCH cur_prop_bt_tvp054_dropped BULK COLLECT INTO t_prop_bt_tvp054_dropped LIMIT 99999999;   -- l_job.NO_COMMIT;
+-- 
+--    FOR i IN 1..t_prop_bt_tvp054_dropped.COUNT
+--    LOOP
+--    
+--      l_err.TXT_KEY := t_prop_bt_tvp054_dropped(i).no_property;
+--      l_mo := NULL;
+--      l_prop_bt_tvp054_dropped := l_prop_bt_tvp054_dropped + 1;
+--      
+      P_MIG_BATCH.FN_ERRORLOG(NO_BATCH,                                                                                  -- Batch number
+                              L_JOB.NO_INSTANCE,                                                                         -- Job number
+                              'X',                                                                                       -- log
+                              SUBSTR('CP21 ' || l_prop_bt_tvp054_dropped || ' Properties dropped/filtered',1,100),       -- error
+                              L_ERR.TXT_KEY,                                                                             -- key
+                              SUBSTR(l_err.TXT_DATA || ',' || L_PROGRESS,1,100)                                          -- data
+                             );
+--
+--    END LOOP;
+--
+--    IF t_prop_bt_tvp054_dropped.COUNT < 999999 THEN --l_job.NO_COMMIT THEN
+--       EXIT;
+--    ELSE
+--       COMMIT;
+--    END IF;
+--     
+--  END LOOP;
+--  CLOSE cur_prop_bt_tvp054_dropped;
+
+ 
   P_MIG_BATCH.FN_RECONLOG(no_batch,                                                                                      -- Batch number
                           l_job.NO_INSTANCE,                                                                             -- Job number
-                          'CP21',                                                                                            -- Control Point
+                          'CP21',                                                                                        -- Control Point
                           650,                                                                                           -- Measure number
-                          0,             -- Zero as loaded from a select statement                                       -- Data to be recorded Z
+                          l_prop_bt_tvp054_dropped,             -- Dropped/Filtered by proc                              -- Data to be recorded
                           'Distinct count of Properties dropped from load BT_TVP054 (Key_GEN Stage 1)');                 -- Description
   l_TotalInserted := l_TotalInserted + 1;
 

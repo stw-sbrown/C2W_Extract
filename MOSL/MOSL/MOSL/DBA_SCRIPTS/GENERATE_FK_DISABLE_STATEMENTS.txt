@@ -1,6 +1,0 @@
-select 'alter table '||a.owner||'.'||a.table_name||' DISABLE constraint '||a.constraint_name||';'
-from all_constraints a, all_constraints b
-where a.constraint_type = 'R'
-and a.r_constraint_name = b.constraint_name
-and a.r_owner  = b.owner
-and a.owner = 'MOUTRAN';

@@ -6,7 +6,7 @@
 -- FILENAME       			: 	P00012.sql
 --
 --
--- Subversion $Revision: 4023 $	
+-- Subversion $Revision: 5300 $	
 --
 --Date 						16/03/2016
 --Issue: 					Rework on MO_CUSTOMER table.  Composite PK requried on 
@@ -15,7 +15,13 @@
 --							and MO_CUST_ADDRESS
 --
 -- Changes applied
+---------------------------- Modification History ----------------------------------------------------------
 --
+-- Version     	Date            Author         	Description
+-- ---------    ----------      -------         -----------------------------------------------------------
+-- V0.01		    31/08/2016			S.Badhan		    Remove addition of PRIMARY KEY on MO_CUSTOMER, already exists.
+-- 
+------------------------------------------------------------------------------------------------------------
 
 
 --DISABLE AND DROP CONSTRAINTS
@@ -31,10 +37,10 @@ ALTER TABLE MO_CUSTOMER DISABLE CONSTRAINT FK_STWPROPERTYNUMBER_PK01;
 ALTER TABLE MO_CUSTOMER DROP CONSTRAINT FK_STWPROPERTYNUMBER_PK01;
 
 --ALTER CUSTOMERNUMBER_PK SO THAT IS CAN BE USED AS A FOREIGN KEY LATER
-ALTER TABLE MO_CUST_ADDRESS ADD UNIQUE (CUSTOMERNUMBER_PK);
+--ALTER TABLE MO_CUST_ADDRESS ADD UNIQUE (CUSTOMERNUMBER_PK);
 
 --ADD COMPOSITE PRIMARY KEY ON MO_CUSTOMER 
-ALTER TABLE MO_CUSTOMER ADD CONSTRAINT PK_CUSTOMER_COMP PRIMARY KEY (CUSTOMERNUMBER_PK,STWPROPERTYNUMBER_PK);
+--ALTER TABLE MO_CUSTOMER ADD CONSTRAINT PK_CUSTOMER_COMP PRIMARY KEY (CUSTOMERNUMBER_PK,STWPROPERTYNUMBER_PK);
 
 --ADD FK FOR THE MO_ELIGIBLE_PREMISES TABLE
 ALTER TABLE "MO_CUSTOMER" ADD CONSTRAINT FK_CUST_PROP FOREIGN KEY("STWPROPERTYNUMBER_PK") REFERENCES "MO_ELIGIBLE_PREMISES"("STWPROPERTYNUMBER_PK");

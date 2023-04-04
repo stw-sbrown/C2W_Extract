@@ -1,8 +1,17 @@
 --Create table BT_SC_MPW
 --N.Henderson - 12/04/2016
--- Subversion $Revision: 4023 $
+-- Subversion $Revision: 4441 $
 --Attempt to drop the table first. Will generate warnign if does not
 --exist but can be ignored.
+
+--------------------------- Modification History ---------------------------------------   
+--
+-- Version     Date        Author     Description
+-- ---------   ----------  -------    ---------------------------------------------------
+-- V 0.01      15/06/2016  S.Badhan   removed schema name from comment.
+-----------------------------------------------------------------------------------------
+
+
 
 --DROP TABLE BT_SC_MPW;
 
@@ -17,7 +26,7 @@
 	CONSTRAINT BT_SC_MPW_PK PRIMARY KEY (NO_COMBINE_054)
 	);
 
-   COMMENT ON TABLE MOUTRAN.BT_SC_MPW  IS 'BT_SC_MPW';
+   COMMENT ON TABLE BT_SC_MPW  IS 'BT_SC_MPW';
 
    commit;
    exit;
